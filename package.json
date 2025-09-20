@@ -15,7 +15,7 @@
     "eslint-plugin-react": "~7.34.0"
   },
   "scripts": {
-    "build": "esbuild src/*.js --bundle --loader:.js=jsx --outdir=js --sourcemap --splitting --format=esm",
-    "watch": "esbuild src/*.js --bundle --loader:.js=jsx --outdir=js --sourcemap --splitting --format=esm --watch"
+    "build": "esbuild src/service_worker.js --bundle --outfile=js/service_worker.js --sourcemap && esbuild src/contentscript.js --bundle --outfile=js/contentscript.js --sourcemap && esbuild src/links.js src/options.js src/constants.js --bundle --loader:.js=jsx --outdir=js --sourcemap --splitting --format=esm",
+    "watch": "npm run build -- --watch"
   }
 }
