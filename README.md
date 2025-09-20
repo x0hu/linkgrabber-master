@@ -11,7 +11,7 @@ Link Grabber is an extension for Google Chrome that extracts links from an HTML 
 This fork includes the following enhancements:
 
 - **Dark Mode**: Complete dark theme for better visual comfort
-- **Discord Link Highlighting**: Discord URLs (discord.com and discord.gg) are highlighted with Discord's brand color (#5865f2)
+- **Highlighting**: Discord URLs, Twitter URLs, Telegram URLs, Github URLs, docs subdomain, "whitepaper", ETH/SOL Addresses
 
 ## Installation
 
