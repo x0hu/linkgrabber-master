@@ -1,0 +1,154 @@
+.LinkPageHeader {
+  white-space: nowrap;
+  line-height: normal;
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+}
+
+.LinkPageStatus {
+  float: right;
+}
+
+.LinkList {
+  list-style: none;
+  padding-left: 0;
+}
+
+.LinkListItem {
+  border-bottom: 1px solid #444;
+  padding-left: 0.5em;
+  padding-right: 0.5em;
+  word-wrap: break-word;
+  background-color: #2a2a2a;
+}
+
+.LinkListItem:nth-child(odd) {
+  background-color: #333;
+}
+
+.LinkListItem--blocked > a {
+  color: #ff6b6b;
+}
+
+.LinkListItem--duplicate > a {
+  color: #888;
+}
+
+.LinkListItem--blocked.LinkListItem--duplicate > a {
+  color: #cc7777;
+}
+
+.LinkPageOptionsForm .form-group {
+  margin-bottom: 1em;
+}
+
+.LinkPageOptionsForm > .form-group + .form-group {
+  margin-left: 1em;
+}
+@media (max-width: 767px) {
+  .LinkPageOptionsForm {
+    margin-bottom: 0em;
+  }
+  .LinkPageOptionsForm > .form-group + .form-group {
+    margin-left: 0;
+  }
+}
+
+.LinkPageOptionsForm .checkbox-inline {
+  user-select: none;
+}
+
+.LinkListItem--twitter {
+  background-color: #1da1f2 !important;
+}
+
+.LinkListItem--twitter > a {
+  color: white !important;
+}
+
+.LinkListItem--twitter.LinkListItem--blocked > a {
+  color: #ffcccc !important;
+}
+
+.LinkListItem--twitter.LinkListItem--duplicate > a {
+  color: #e6e6e6 !important;
+}
+
+.LinkListItem--solana {
+  background-color: #6c5689 !important; /* medium-dark purple */
+}
+
+.LinkListItem--solana > a {
+  color: white !important;
+}
+
+.LinkListItem--solana.LinkListItem--blocked > a {
+  color: #ffcccc !important;
+}
+
+.LinkListItem--solana.LinkListItem--duplicate > a {
+  color: #e6e6e6 !important;
+}
+
+.LinkListItem--eth {
+  background-color: #4a4838 !important; /* dark theme beige */
+}
+
+/* Handle combinations with other states */
+.LinkListItem--solana.LinkListItem--blocked > a,
+.LinkListItem--eth.LinkListItem--blocked > a {
+  color: #ff6b6b !important;
+}
+
+.LinkListItem--solana.LinkListItem--duplicate > a,
+.LinkListItem--eth.LinkListItem--duplicate > a {
+  color: #888 !important;
+}
+
+.LinkListItem--docs {
+  background-color: #4a4a4a !important; /* dark gray */
+}
+
+.LinkListItem--docs > a {
+  color: white !important;
+}
+
+.LinkListItem--docs.LinkListItem--blocked > a {
+  color: #ffcccc !important;
+}
+
+.LinkListItem--docs.LinkListItem--duplicate > a {
+  color: #e6e6e6 !important;
+}
+
+.LinkListItem--telegram {
+  background-color: #0088cc !important; /* Telegram blue */
+}
+
+.LinkListItem--telegram > a {
+  color: white !important;
+}
+
+.LinkListItem--telegram.LinkListItem--blocked > a {
+  color: #ffcccc !important;
+}
+
+.LinkListItem--telegram.LinkListItem--duplicate > a {
+  color: #e6e6e6 !important;
+}
+
+.LinkListItem--discord {
+  background-color: #5865f2 !important;
+}
+
+.LinkListItem--discord > a {
+  color: white !important;
+}
+
+.LinkListItem--discord.LinkListItem--blocked > a {
+  color: #ffcccc !important;
+}
+
+.LinkListItem--discord.LinkListItem--duplicate > a {
+  color: #e6e6e6 !important;
+}
