@@ -13,7 +13,7 @@
   "incognito": "split",
   "options_ui": {
     "browser_style": false,
-    "page": "images/options.html"
+    "page": "html/options.html"
   },
   "icons": {
     "16": "/images/link_go_16.png",
