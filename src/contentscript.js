@@ -72,7 +72,30 @@
     /^https?:\/\/xn--/i,
   ];
 
+  // Fast string prefix checks for common ignored domains (avoids regex for ~80% of URLs)
+  const ignoredPrefixes = [
+    'https://fonts.googleapis.com',
+    'https://fonts.gstatic.com',
+    'https://cdn.jsdelivr.net',
+    'https://unpkg.com',
+    'https://cdnjs.cloudflare.com',
+    'https://developer.mozilla.org',
+    'https://reactjs.org',
+    'https://react.dev/errors',
+    'https://nextjs.org/docs',
+    'https://www.w3.org',
+    'http://www.w3.org',
+    'https://registry.npmjs.org',
+    'https://localhost',
+    'http://localhost',
+  ];
+
   function isIgnoredUrl(url) {
+    // Fast path: check common prefixes first
+    for (let i = 0; i < ignoredPrefixes.length; i++) {
+      if (url.startsWith(ignoredPrefixes[i])) return true;
+    }
+    // Slow path: regex patterns for complex matches
     return ignoredPatterns.some(pattern => pattern.test(url));
   }
 
@@ -145,11 +168,18 @@
     });
   });
 
-  // External scripts - fetch and parse
+  // External scripts - fetch and parse (with timeout to prevent hangs)
+  const fetchWithTimeout = (url, timeoutMs = 3000) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { signal: controller.signal })
+      .finally(() => clearTimeout(timeoutId));
+  };
+
   const scriptPromises = Array.from(document.querySelectorAll('script[src]'))
     .filter(s => s.src.startsWith(window.location.origin))
     .map(script =>
-      fetch(script.src)
+      fetchWithTimeout(script.src)
         .then(r => r.text())
         .then(text => {
           const matches = text.match(urlRegex) || [];

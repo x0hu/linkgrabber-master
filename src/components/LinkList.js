@@ -1,10 +1,13 @@
 import React from 'react';
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import cx from 'classnames';
 import debounce from 'lodash.debounce';
 import LinkListEmpty from './LinkListEmpty';
 import LinkListExpired from './LinkListExpired';
 import './LinkList.css';
+
+// Image file extensions (moved outside component to avoid re-creation)
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|svg|ico|bmp|tiff?|avif)(\?|#|$)/i;
 
 function copyLinks(element) {
   const selection = window.getSelection();
@@ -30,32 +33,68 @@ function copyLinks(element) {
   }
 }
 
+// Extract base domain (e.g., app.lighter.xyz -> lighter.xyz)
+function getBaseDomain(hostname) {
+  const parts = hostname.toLowerCase().split('.');
+  // Handle common TLDs - keep last 2 parts, or 3 for co.uk style
+  if (parts.length <= 2) return hostname.toLowerCase();
+  // Check for two-part TLDs like co.uk, com.au, etc.
+  const lastTwo = parts.slice(-2).join('.');
+  const twoPartTlds = ['co.uk', 'com.au', 'co.nz', 'co.jp', 'com.br', 'co.kr'];
+  if (twoPartTlds.includes(lastTwo) && parts.length > 2) {
+    return parts.slice(-3).join('.');
+  }
+  return parts.slice(-2).join('.');
+}
+
+// Get priority tier for a link (lower = higher priority)
+function getLinkPriority(link) {
+  const hostname = link.hostname.toLowerCase();
+  const href = link.href;
+  // Tier 1: Base domain (handled separately)
+  // Tier 2: Social links
+  if (hostname === 'x.com' || hostname === 'twitter.com') return 2;
+  if (hostname === 't.me') return 2;
+  if (hostname.includes('discord.com') || hostname === 'discord.gg') return 2;
+  // Tier 3: Blockchain explorers / addresses
+  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(href.split('/').pop())) return 3; // Solana
+  if (/^(0x)?[0-9a-fA-F]{40}$/.test(href.split('/').pop())) return 3; // ETH
+  // Tier 4: Documentation
+  if (hostname.includes('github.com') || hostname.includes('gitbook') ||
+      hostname.includes('docs.') || hostname.includes('whitepaper')) return 4;
+  // Tier 5: Everything else
+  return 5;
+}
+
 function groupLinksByDomain(links, sourceUrl) {
-  // Extract current domain from source URL
-  let currentDomain = '';
+  // Extract current base domain from source URL
+  let currentBaseDomain = '';
   if (sourceUrl) {
     try {
       const url = new URL(sourceUrl);
-      currentDomain = url.hostname.toLowerCase();
+      currentBaseDomain = getBaseDomain(url.hostname);
     } catch (e) {}
   }
 
   const indexes = new Array(links.length);
   const rh = new Array(links.length);
   const isCurrentDomain = new Array(links.length);
+  const priority = new Array(links.length);
   for (let i = 0; i < links.length; i++) {
     indexes[i] = i;
     const hostname = links[i].hostname.toLowerCase();
     rh[i] = hostname.split('.').reverse().join('.');
-    // Check if link belongs to current domain (exact match or subdomain)
-    isCurrentDomain[i] = hostname === currentDomain ||
-                         hostname.endsWith('.' + currentDomain) ||
-                         currentDomain.endsWith('.' + hostname);
+    // Check if link shares the same base domain
+    const linkBaseDomain = getBaseDomain(hostname);
+    isCurrentDomain[i] = linkBaseDomain === currentBaseDomain;
+    priority[i] = getLinkPriority(links[i]);
   }
   indexes.sort((i, j) => {
-    // Current domain links come first
+    // Current domain links come first (tier 1)
     if (isCurrentDomain[i] && !isCurrentDomain[j]) return -1;
     if (!isCurrentDomain[i] && isCurrentDomain[j]) return 1;
+    // Then sort by priority tier
+    if (priority[i] !== priority[j]) return priority[i] - priority[j];
     // Then sort alphabetically by reversed hostname
     if (rh[i] < rh[j]) return -1;
     if (rh[i] > rh[j]) return 1;
@@ -183,63 +222,73 @@ export default function LinkList(props) {
     return (<LinkListExpired />);
   }
 
-  let links = props.links.slice(0);
-  if (links.length === 0) {
+  // Memoize expensive link processing to avoid recalculation on every render
+  const processedLinks = useMemo(() => {
+    let result = props.links.slice(0);
+    if (hideSameOrigin) {
+      result = rejectSameOrigin(result, props.source);
+    }
+    if (groupByDomain) {
+      result = groupLinksByDomain(result, props.source);
+    }
+    return result;
+  }, [props.links, props.source, hideSameOrigin, groupByDomain]);
+
+  if (processedLinks.length === 0 && props.links.length === 0) {
     return (<LinkListEmpty source={props.source} />);
   }
 
-  if (hideSameOrigin) {
-    links = rejectSameOrigin(links, props.source);
-  }
-  if (groupByDomain) {
-    links = groupLinksByDomain(links, props.source);
-  }
+  // Memoize blocked/duplicate maps
+  const blocked = useMemo(() => mapBlocked(processedLinks, props.blockedDomains), [processedLinks, props.blockedDomains]);
+  const duplicates = useMemo(() => mapDuplicates(processedLinks), [processedLinks]);
 
-  const blocked = mapBlocked(links, props.blockedDomains);
-  const duplicates = mapDuplicates(links);
-  const filterLowerCase = filter.trim().toLowerCase();
+  // Memoize categorized items
+  const { aTagItems, scriptItems, imageItems, items } = useMemo(() => {
+    const filterLowerCase = filter.trim().toLowerCase();
+    const aTag = [];
+    const script = [];
+    const image = [];
 
-  const aTagItems = [];
-  const scriptItems = [];
-  const imageItems = [];
-
-  // Image file extensions
-  const imageExtensions = /\.(jpe?g|png|gif|webp|svg|ico|bmp|tiff?|avif)(\?|#|$)/i;
-
-  links.forEach((link, index) => {
-    if (hideDuplicates && duplicates[index]) return;
-    if (hideBlockedDomains && blocked[index]) return;
-    if (filterLowerCase) {
-      const lowerHref = link.href.toLowerCase();
-      if (lowerHref.indexOf(filterLowerCase) < 0) return;
-    }
-    const itemClassName = cx('LinkListItem', {
-      'LinkListItem--blocked': blocked[index],
-      'LinkListItem--duplicate': duplicates[index],
-      'LinkListItem--twitter': isTwitterLink(link.hostname),
-      'LinkListItem--solana': isSolanaAddress(link.href),
-      'LinkListItem--eth': isEthAddress(link.href),
-      'LinkListItem--docs': isDocumentationLink(link.hostname),
-      'LinkListItem--telegram': isTelegramLink(link.hostname),
-      'LinkListItem--discord': isDiscordLink(link.hostname),
+    processedLinks.forEach((link, index) => {
+      if (hideDuplicates && duplicates[index]) return;
+      if (hideBlockedDomains && blocked[index]) return;
+      if (filterLowerCase) {
+        const lowerHref = link.href.toLowerCase();
+        if (lowerHref.indexOf(filterLowerCase) < 0) return;
+      }
+      const itemClassName = cx('LinkListItem', {
+        'LinkListItem--blocked': blocked[index],
+        'LinkListItem--duplicate': duplicates[index],
+        'LinkListItem--twitter': isTwitterLink(link.hostname),
+        'LinkListItem--solana': isSolanaAddress(link.href),
+        'LinkListItem--eth': isEthAddress(link.href),
+        'LinkListItem--docs': isDocumentationLink(link.hostname),
+        'LinkListItem--telegram': isTelegramLink(link.hostname),
+        'LinkListItem--discord': isDiscordLink(link.hostname),
+      });
+      const item = (
+        <li key={index} className={itemClassName}>
+          <a href={link.href} target="_blank">{link.href}</a>
+        </li>
+      );
+      // Categorize by source and type
+      const isImage = link.source === 'image' || IMAGE_EXTENSIONS.test(link.href);
+      if (isImage) {
+        image.push(item);
+      } else if (link.source === 'script') {
+        script.push(item);
+      } else {
+        aTag.push(item);
+      }
     });
-    const item = (
-      <li key={index} className={itemClassName}>
-        <a href={link.href} target="_blank">{link.href}</a>
-      </li>
-    );
-    // Categorize by source and type
-    const isImage = link.source === 'image' || imageExtensions.test(link.href);
-    if (isImage) {
-      imageItems.push(item);
-    } else if (link.source === 'script') {
-      scriptItems.push(item);
-    } else {
-      aTagItems.push(item);
-    }
-  });
 
-  const items = [...aTagItems, ...imageItems, ...scriptItems];
+    return {
+      aTagItems: aTag,
+      scriptItems: script,
+      imageItems: image,
+      items: [...aTag, ...image, ...script]
+    };
+  }, [processedLinks, blocked, duplicates, filter, hideDuplicates, hideBlockedDomains]);
 
   const aTagListRef = useRef(null);
   const scriptListRef = useRef(null);
@@ -275,35 +324,85 @@ export default function LinkList(props) {
         </div>
       </div>
       <div ref={linkListRef} className="LinkListColumns">
-        <div className="LinkListColumnGroup">
-          <div className="LinkListColumn">
-            <h3 className="LinkListColumnHeader">
-              HTML Links ({aTagItems.length})
-              <button className="btn btn-xs btn-default" disabled={aTagItems.length === 0} onClick={() => copyLinks(aTagListRef.current)}>Copy</button>
-            </h3>
-            <ul ref={aTagListRef} className="LinkList">
-              {aTagItems}
-            </ul>
-          </div>
-          <div className="LinkListColumn">
-            <h3 className="LinkListColumnHeader">
-              Images ({imageItems.length})
-              <button className="btn btn-xs btn-default" disabled={imageItems.length === 0} onClick={() => copyLinks(imageListRef.current)}>Copy</button>
-            </h3>
-            <ul ref={imageListRef} className="LinkList">
-              {imageItems}
-            </ul>
-          </div>
-        </div>
-        <div className="LinkListColumn">
-          <h3 className="LinkListColumnHeader">
-            Embedded Links ({scriptItems.length})
-            <button className="btn btn-xs btn-default" disabled={scriptItems.length === 0} onClick={() => copyLinks(scriptListRef.current)}>Copy</button>
-          </h3>
-          <ul ref={scriptListRef} className="LinkList">
-            {scriptItems}
-          </ul>
-        </div>
+        {/* Dynamic layout based on content */}
+        {scriptItems.length === 0 ? (
+          // No embedded links: HTML Links left, Images right
+          <>
+            <div className="LinkListColumn">
+              <h3 className="LinkListColumnHeader">
+                HTML Links ({aTagItems.length})
+                <button className="btn btn-xs btn-default" disabled={aTagItems.length === 0} onClick={() => copyLinks(aTagListRef.current)}>Copy</button>
+              </h3>
+              <ul ref={aTagListRef} className="LinkList">
+                {aTagItems}
+              </ul>
+            </div>
+            <div className="LinkListColumn">
+              <h3 className="LinkListColumnHeader">
+                Images ({imageItems.length})
+                <button className="btn btn-xs btn-default" disabled={imageItems.length === 0} onClick={() => copyLinks(imageListRef.current)}>Copy</button>
+              </h3>
+              <ul ref={imageListRef} className="LinkList">
+                {imageItems}
+              </ul>
+            </div>
+          </>
+        ) : aTagItems.length === 0 ? (
+          // No HTML links: Embedded Links left, Images right
+          <>
+            <div className="LinkListColumn">
+              <h3 className="LinkListColumnHeader">
+                Embedded Links ({scriptItems.length})
+                <button className="btn btn-xs btn-default" disabled={scriptItems.length === 0} onClick={() => copyLinks(scriptListRef.current)}>Copy</button>
+              </h3>
+              <ul ref={scriptListRef} className="LinkList">
+                {scriptItems}
+              </ul>
+            </div>
+            <div className="LinkListColumn">
+              <h3 className="LinkListColumnHeader">
+                Images ({imageItems.length})
+                <button className="btn btn-xs btn-default" disabled={imageItems.length === 0} onClick={() => copyLinks(imageListRef.current)}>Copy</button>
+              </h3>
+              <ul ref={imageListRef} className="LinkList">
+                {imageItems}
+              </ul>
+            </div>
+          </>
+        ) : (
+          // Normal: HTML Links + Images stacked left, Embedded Links right
+          <>
+            <div className="LinkListColumnGroup">
+              <div className="LinkListColumn">
+                <h3 className="LinkListColumnHeader">
+                  HTML Links ({aTagItems.length})
+                  <button className="btn btn-xs btn-default" disabled={aTagItems.length === 0} onClick={() => copyLinks(aTagListRef.current)}>Copy</button>
+                </h3>
+                <ul ref={aTagListRef} className="LinkList">
+                  {aTagItems}
+                </ul>
+              </div>
+              <div className="LinkListColumn">
+                <h3 className="LinkListColumnHeader">
+                  Images ({imageItems.length})
+                  <button className="btn btn-xs btn-default" disabled={imageItems.length === 0} onClick={() => copyLinks(imageListRef.current)}>Copy</button>
+                </h3>
+                <ul ref={imageListRef} className="LinkList">
+                  {imageItems}
+                </ul>
+              </div>
+            </div>
+            <div className="LinkListColumn">
+              <h3 className="LinkListColumnHeader">
+                Embedded Links ({scriptItems.length})
+                <button className="btn btn-xs btn-default" disabled={scriptItems.length === 0} onClick={() => copyLinks(scriptListRef.current)}>Copy</button>
+              </h3>
+              <ul ref={scriptListRef} className="LinkList">
+                {scriptItems}
+              </ul>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
