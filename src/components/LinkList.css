@@ -152,3 +152,47 @@
 .LinkListItem--discord.LinkListItem--duplicate > a {
   color: #e6e6e6 !important;
 }
+
+.LinkListColumns {
+  display: flex;
+  gap: 20px;
+}
+
+.LinkListColumnGroup {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.LinkListColumn {
+  flex: 1;
+  min-width: 0;
+}
+
+.LinkListColumnGroup .LinkListColumn .LinkList {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.LinkListColumnHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 1.1em;
+  color: #ccc;
+  border-bottom: 1px solid #555;
+  padding-bottom: 5px;
+}
+
+.LinkListColumnHeader .btn {
+  margin-left: auto;
+}
+
+@media (max-width: 991px) {
+  .LinkListColumns {
+    flex-direction: column;
+  }
+}

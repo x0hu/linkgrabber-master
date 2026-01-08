@@ -30,20 +30,35 @@ function copyLinks(element) {
   }
 }
 
-function groupLinksByDomain(links) {
+function groupLinksByDomain(links, sourceUrl) {
+  // Extract current domain from source URL
+  let currentDomain = '';
+  if (sourceUrl) {
+    try {
+      const url = new URL(sourceUrl);
+      currentDomain = url.hostname.toLowerCase();
+    } catch (e) {}
+  }
+
   const indexes = new Array(links.length);
   const rh = new Array(links.length);
+  const isCurrentDomain = new Array(links.length);
   for (let i = 0; i < links.length; i++) {
     indexes[i] = i;
-    rh[i] = links[i].hostname.toLowerCase().split('.').reverse().join('.');
+    const hostname = links[i].hostname.toLowerCase();
+    rh[i] = hostname.split('.').reverse().join('.');
+    // Check if link belongs to current domain (exact match or subdomain)
+    isCurrentDomain[i] = hostname === currentDomain ||
+                         hostname.endsWith('.' + currentDomain) ||
+                         currentDomain.endsWith('.' + hostname);
   }
   indexes.sort((i, j) => {
-    if (rh[i] < rh[j]) {
-      return -1;
-    }
-    if (rh[i] > rh[j]) {
-      return 1;
-    }
+    // Current domain links come first
+    if (isCurrentDomain[i] && !isCurrentDomain[j]) return -1;
+    if (!isCurrentDomain[i] && isCurrentDomain[j]) return 1;
+    // Then sort alphabetically by reversed hostname
+    if (rh[i] < rh[j]) return -1;
+    if (rh[i] > rh[j]) return 1;
     return i - j;
   });
   return indexes.map(i => links[i]);
@@ -177,24 +192,26 @@ export default function LinkList(props) {
     links = rejectSameOrigin(links, props.source);
   }
   if (groupByDomain) {
-    links = groupLinksByDomain(links);
+    links = groupLinksByDomain(links, props.source);
   }
 
   const blocked = mapBlocked(links, props.blockedDomains);
   const duplicates = mapDuplicates(links);
   const filterLowerCase = filter.trim().toLowerCase();
-  const items = links.reduce((memo, link, index) => {
-    if (hideDuplicates && duplicates[index]) {
-      return memo;
-    }
-    if (hideBlockedDomains && blocked[index]) {
-      return memo;
-    }
+
+  const aTagItems = [];
+  const scriptItems = [];
+  const imageItems = [];
+
+  // Image file extensions
+  const imageExtensions = /\.(jpe?g|png|gif|webp|svg|ico|bmp|tiff?|avif)(\?|#|$)/i;
+
+  links.forEach((link, index) => {
+    if (hideDuplicates && duplicates[index]) return;
+    if (hideBlockedDomains && blocked[index]) return;
     if (filterLowerCase) {
       const lowerHref = link.href.toLowerCase();
-      if (lowerHref.indexOf(filterLowerCase) < 0) {
-        return memo;
-      }
+      if (lowerHref.indexOf(filterLowerCase) < 0) return;
     }
     const itemClassName = cx('LinkListItem', {
       'LinkListItem--blocked': blocked[index],
@@ -206,13 +223,27 @@ export default function LinkList(props) {
       'LinkListItem--telegram': isTelegramLink(link.hostname),
       'LinkListItem--discord': isDiscordLink(link.hostname),
     });
-    memo.push(
+    const item = (
       <li key={index} className={itemClassName}>
         <a href={link.href} target="_blank">{link.href}</a>
       </li>
     );
-    return memo;
-  }, []);
+    // Categorize by source and type
+    const isImage = link.source === 'image' || imageExtensions.test(link.href);
+    if (isImage) {
+      imageItems.push(item);
+    } else if (link.source === 'script') {
+      scriptItems.push(item);
+    } else {
+      aTagItems.push(item);
+    }
+  });
+
+  const items = [...aTagItems, ...imageItems, ...scriptItems];
+
+  const aTagListRef = useRef(null);
+  const scriptListRef = useRef(null);
+  const imageListRef = useRef(null);
 
   return (
     <div className="container-fluid">
@@ -238,14 +269,42 @@ export default function LinkList(props) {
           </div>
           <div className="form-group LinkPageStatus">
             <button className="btn btn-default" disabled={items.length === 0} onClick={() => copyLinks(linkListRef.current)}>
-              Copy {items.length} / {props.links.length}
+              Copy All {items.length} / {props.links.length}
             </button>
           </div>
         </div>
       </div>
-      <ul ref={linkListRef} className="LinkList">
-        {items}
-      </ul>
+      <div ref={linkListRef} className="LinkListColumns">
+        <div className="LinkListColumnGroup">
+          <div className="LinkListColumn">
+            <h3 className="LinkListColumnHeader">
+              HTML Links ({aTagItems.length})
+              <button className="btn btn-xs btn-default" disabled={aTagItems.length === 0} onClick={() => copyLinks(aTagListRef.current)}>Copy</button>
+            </h3>
+            <ul ref={aTagListRef} className="LinkList">
+              {aTagItems}
+            </ul>
+          </div>
+          <div className="LinkListColumn">
+            <h3 className="LinkListColumnHeader">
+              Images ({imageItems.length})
+              <button className="btn btn-xs btn-default" disabled={imageItems.length === 0} onClick={() => copyLinks(imageListRef.current)}>Copy</button>
+            </h3>
+            <ul ref={imageListRef} className="LinkList">
+              {imageItems}
+            </ul>
+          </div>
+        </div>
+        <div className="LinkListColumn">
+          <h3 className="LinkListColumnHeader">
+            Embedded Links ({scriptItems.length})
+            <button className="btn btn-xs btn-default" disabled={scriptItems.length === 0} onClick={() => copyLinks(scriptListRef.current)}>Copy</button>
+          </h3>
+          <ul ref={scriptListRef} className="LinkList">
+            {scriptItems}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }
