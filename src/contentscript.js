@@ -1,6 +1,7 @@
 (function () {
   const seenUrls = new Set();
   const links = [];
+  const frameUrl = window.location.href;
 
   // Domains/patterns to ignore (library/framework noise)
   const ignoredPatterns = [
@@ -119,6 +120,7 @@
         search: url.search,
         text: text,
         source: source,
+        frameUrl: frameUrl,
       });
     } catch (e) {}
   }

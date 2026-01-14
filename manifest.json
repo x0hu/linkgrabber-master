@@ -8,7 +8,11 @@
     "clipboardWrite",
     "contextMenus",
     "scripting",
-    "storage"
+    "storage",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ],
   "incognito": "split",
   "options_ui": {
