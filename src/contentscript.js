@@ -155,11 +155,34 @@
 
   // 3. Extract URLs from inline scripts and external script content
   const urlRegex = /https?:\/\/[^\s"'`<>\\]+/g;
+  // Match relative paths in string literals (e.g., "/dashboard/deposit")
+  const relativePathRegex = /["'`](\/[a-zA-Z][a-zA-Z0-9\-_\/]*[a-zA-Z0-9])["'`]/g;
+  // File extensions to ignore (static assets, not routes)
+  const ignoredExtensions = /\.(js|jsx|ts|tsx|css|scss|less|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|json|xml|txt|md|html|htm)$/i;
   const currentHost = window.location.hostname;
+  const currentOrigin = window.location.origin;
+
+  // Helper to extract relative paths from script content
+  function extractRelativePaths(text) {
+    const paths = [];
+    let match;
+    // Reset regex state
+    relativePathRegex.lastIndex = 0;
+    while ((match = relativePathRegex.exec(text)) !== null) {
+      const path = match[1];
+      // Skip static asset paths
+      if (!ignoredExtensions.test(path)) {
+        paths.push(path);
+      }
+    }
+    return paths;
+  }
 
   // Inline scripts
   document.querySelectorAll('script:not([src])').forEach(script => {
-    const matches = script.textContent.match(urlRegex) || [];
+    const text = script.textContent;
+    // Extract full URLs (external only)
+    const matches = text.match(urlRegex) || [];
     matches.forEach(url => {
       try {
         const parsed = new URL(url);
@@ -167,6 +190,10 @@
           addLink(url, '', 'script');
         }
       } catch (e) {}
+    });
+    // Extract relative paths and resolve to full URLs
+    extractRelativePaths(text).forEach(path => {
+      addLink(currentOrigin + path, '', 'script');
     });
   });
 
@@ -184,6 +211,7 @@
       fetchWithTimeout(script.src)
         .then(r => r.text())
         .then(text => {
+          // Extract full URLs (external only)
           const matches = text.match(urlRegex) || [];
           matches.forEach(url => {
             try {
@@ -192,6 +220,10 @@
                 addLink(url, '', 'script');
               }
             } catch (e) {}
+          });
+          // Extract relative paths and resolve to full URLs
+          extractRelativePaths(text).forEach(path => {
+            addLink(currentOrigin + path, '', 'script');
           });
         })
         .catch(() => {})
