@@ -153,6 +153,22 @@
   color: #e6e6e6 !important;
 }
 
+.LinkListItem--instagram {
+  background-color: #e1306c !important;
+}
+
+.LinkListItem--instagram > a {
+  color: white !important;
+}
+
+.LinkListItem--instagram.LinkListItem--blocked > a {
+  color: #ffcccc !important;
+}
+
+.LinkListItem--instagram.LinkListItem--duplicate > a {
+  color: #e6e6e6 !important;
+}
+
 .LinkListColumns {
   display: flex;
   gap: 20px;

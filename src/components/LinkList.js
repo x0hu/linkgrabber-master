@@ -186,6 +186,10 @@ function isDiscordLink(hostname) {
   return lowerHostname.includes('discord.com') || lowerHostname === 'discord.gg';
 }
 
+function isInstagramLink(hostname) {
+  return hostname.toLowerCase().includes('instagram.com');
+}
+
 export default function LinkList(props) {
   const linkListRef = useRef(null);
 
@@ -265,6 +269,7 @@ export default function LinkList(props) {
         'LinkListItem--docs': isDocumentationLink(link.hostname),
         'LinkListItem--telegram': isTelegramLink(link.hostname),
         'LinkListItem--discord': isDiscordLink(link.hostname),
+        'LinkListItem--instagram': isInstagramLink(link.hostname),
       });
       const item = (
         <li key={index} className={itemClassName}>
