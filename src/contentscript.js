@@ -1,5 +1,6 @@
 (function () {
   const seenUrls = new Set();
+  const seenEvmAddresses = new Set();
   const links = [];
   const frameUrl = window.location.href;
 
@@ -100,6 +101,13 @@
     return ignoredPatterns.some(pattern => pattern.test(url));
   }
 
+  function getEvmAddressFromPath(pathname) {
+    const segments = pathname.split('/').filter(Boolean);
+    const tail = segments[segments.length - 1] || '';
+    const match = tail.match(/^0x[0-9a-fA-F]{40}$/);
+    return match ? match[0].toLowerCase() : '';
+  }
+
   // Helper to parse URL and create link object
   function addLink(href, text = '', source = 'a') {
     if (isIgnoredUrl(href)) return;
@@ -110,6 +118,10 @@
       const dedupKey = normalizedHref.replace(/^https?:\/\//, '');
       if (seenUrls.has(dedupKey)) return;
       seenUrls.add(dedupKey);
+      const evmAddress = getEvmAddressFromPath(url.pathname);
+      if (evmAddress) {
+        seenEvmAddresses.add(evmAddress);
+      }
       links.push({
         hash: url.hash,
         host: url.host,
@@ -123,6 +135,13 @@
         frameUrl: frameUrl,
       });
     } catch (e) {}
+  }
+
+  function addEvmAddress(address) {
+    const normalizedAddress = address.toLowerCase();
+    if (seenEvmAddresses.has(normalizedAddress)) return;
+    seenEvmAddresses.add(normalizedAddress);
+    addLink(`https://etherscan.io/address/${address}`, address, 'evm');
   }
 
   // 1. Extract from <a> tags (original behavior)
@@ -155,6 +174,7 @@
 
   // 3. Extract URLs from inline scripts and external script content
   const urlRegex = /https?:\/\/[^\s"'`<>\\]+/g;
+  const evmAddressRegex = /\b0x[0-9a-fA-F]{40}\b/g;
   // Match relative paths in string literals (e.g., "/dashboard/deposit")
   const relativePathRegex = /["'`](\/[a-zA-Z][a-zA-Z0-9\-_\/]*[a-zA-Z0-9])["'`]/g;
   // File extensions to ignore (static assets, not routes)
@@ -178,6 +198,16 @@
     return paths;
   }
 
+  function extractEvmAddresses(text) {
+    const addresses = [];
+    let match;
+    evmAddressRegex.lastIndex = 0;
+    while ((match = evmAddressRegex.exec(text)) !== null) {
+      addresses.push(match[0]);
+    }
+    return addresses;
+  }
+
   // Inline scripts
   document.querySelectorAll('script:not([src])').forEach(script => {
     const text = script.textContent;
@@ -195,6 +225,7 @@
     extractRelativePaths(text).forEach(path => {
       addLink(currentOrigin + path, '', 'script');
     });
+    extractEvmAddresses(text).forEach(addEvmAddress);
   });
 
   // External scripts - fetch and parse (with timeout to prevent hangs)
@@ -225,6 +256,7 @@
           extractRelativePaths(text).forEach(path => {
             addLink(currentOrigin + path, '', 'script');
           });
+          extractEvmAddresses(text).forEach(addEvmAddress);
         })
         .catch(() => {})
     );

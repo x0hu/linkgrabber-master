@@ -10,6 +10,9 @@ import './LinkList.css';
 const IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|svg|ico|bmp|tiff?|avif)(\?|#|$)/i;
 
 function copyLinks(element) {
+  if (!element) {
+    return;
+  }
   const selection = window.getSelection();
   const prevRange = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
   const tmp = document.createElement('div');
@@ -55,7 +58,7 @@ function getHighlightPriority(link) {
   if (isDiscordLink(hostname)) return 3;
   if (isInstagramLink(hostname)) return 4;
   if (isDocumentationLink(hostname)) return 5;
-  if (isEthAddress(link.href)) return 6;
+  if (isEvmAddressLink(link.href)) return 6;
   if (isSolanaAddress(link.href)) return 7;
   return 8;
 }
@@ -159,9 +162,18 @@ function isSolanaAddress(href) {
          /^(So|sol)[1-9A-HJ-NP-Za-km-z]{32,44}$/i.test(address);
 }
 
-function isEthAddress(href) {
-  const lastUrlPart = href.split('/').pop();
-  return /^(0x)?[0-9a-fA-F]{40}$/.test(lastUrlPart);
+function getPathTail(href) {
+  try {
+    const url = new URL(href);
+    const segments = url.pathname.split('/').filter(Boolean);
+    return segments[segments.length - 1] || '';
+  } catch (e) {
+    return href.split(/[?#]/)[0].split('/').pop();
+  }
+}
+
+function isEvmAddressLink(href) {
+  return /^(0x)?[0-9a-fA-F]{40}$/.test(getPathTail(href));
 }
 
 function isDocumentationLink(hostname) {
@@ -188,6 +200,10 @@ function isInstagramLink(hostname) {
 
 export default function LinkList(props) {
   const linkListRef = useRef(null);
+  const aTagListRef = useRef(null);
+  const scriptListRef = useRef(null);
+  const evmListRef = useRef(null);
+  const imageListRef = useRef(null);
 
   const [filter, setFilter] = useState('');
   const [nextFilter, setNextFilter] = useState('');
@@ -207,7 +223,7 @@ export default function LinkList(props) {
     const h = (event) => {
       const selection = window.getSelection();
       if (selection.type === 'None' || selection.type === 'Caret') {
-        copyLinks();
+        copyLinks(linkListRef.current);
       }
     };
     window.document.addEventListener('copy', h);
@@ -243,10 +259,11 @@ export default function LinkList(props) {
   const duplicates = useMemo(() => mapDuplicates(processedLinks), [processedLinks]);
 
   // Memoize categorized items
-  const { aTagItems, scriptItems, imageItems, items } = useMemo(() => {
+  const { aTagItems, scriptItems, evmItems, imageItems } = useMemo(() => {
     const filterLowerCase = filter.trim().toLowerCase();
     const aTag = [];
     const script = [];
+    const evm = [];
     const image = [];
 
     processedLinks.forEach((link, index) => {
@@ -261,7 +278,7 @@ export default function LinkList(props) {
         'LinkListItem--duplicate': duplicates[index],
         'LinkListItem--twitter': isTwitterLink(link.hostname),
         'LinkListItem--solana': isSolanaAddress(link.href),
-        'LinkListItem--eth': isEthAddress(link.href),
+        'LinkListItem--eth': isEvmAddressLink(link.href),
         'LinkListItem--docs': isDocumentationLink(link.hostname),
         'LinkListItem--telegram': isTelegramLink(link.hostname),
         'LinkListItem--discord': isDiscordLink(link.hostname),
@@ -274,7 +291,9 @@ export default function LinkList(props) {
       );
       // Categorize by source and type
       const isImage = link.source === 'image' || IMAGE_EXTENSIONS.test(link.href);
-      if (isImage) {
+      if (isEvmAddressLink(link.href)) {
+        evm.push(item);
+      } else if (isImage) {
         image.push(item);
       } else if (link.source === 'script') {
         script.push(item);
@@ -286,14 +305,29 @@ export default function LinkList(props) {
     return {
       aTagItems: aTag,
       scriptItems: script,
+      evmItems: evm,
       imageItems: image,
-      items: [...aTag, ...image, ...script]
     };
   }, [processedLinks, blocked, duplicates, filter, hideDuplicates, hideBlockedDomains]);
 
-  const aTagListRef = useRef(null);
-  const scriptListRef = useRef(null);
-  const imageListRef = useRef(null);
+  const renderSection = (title, items, ref) => {
+    if (items.length === 0) {
+      return null;
+    }
+    return (
+      <div className="LinkListColumn">
+        <h3 className="LinkListColumnHeader">
+          {title} ({items.length})
+          <button className="btn btn-xs btn-default" onClick={() => copyLinks(ref.current)}>Copy</button>
+        </h3>
+        <ul ref={ref} className="LinkList">
+          {items}
+        </ul>
+      </div>
+    );
+  };
+
+  const hasSecondarySections = evmItems.length > 0 || imageItems.length > 0;
 
   return (
     <div className="container-fluid">
@@ -317,92 +351,16 @@ export default function LinkList(props) {
           <div className="form-group">
             <input type="text" className="form-control" placeholder="substring filter" autoFocus value={nextFilter} onChange={filterChanged} />
           </div>
-          <div className="form-group LinkPageStatus">
-            <button className="btn btn-default" disabled={items.length === 0} onClick={() => copyLinks(linkListRef.current)}>
-              Copy All {items.length} / {props.links.length}
-            </button>
-          </div>
         </div>
       </div>
       <div ref={linkListRef} className="LinkListColumns">
-        {/* Dynamic layout based on content */}
-        {scriptItems.length === 0 ? (
-          // No embedded links: HTML Links left, Images right
-          <>
-            <div className="LinkListColumn">
-              <h3 className="LinkListColumnHeader">
-                HTML Links ({aTagItems.length})
-                <button className="btn btn-xs btn-default" disabled={aTagItems.length === 0} onClick={() => copyLinks(aTagListRef.current)}>Copy</button>
-              </h3>
-              <ul ref={aTagListRef} className="LinkList">
-                {aTagItems}
-              </ul>
-            </div>
-            <div className="LinkListColumn">
-              <h3 className="LinkListColumnHeader">
-                Images ({imageItems.length})
-                <button className="btn btn-xs btn-default" disabled={imageItems.length === 0} onClick={() => copyLinks(imageListRef.current)}>Copy</button>
-              </h3>
-              <ul ref={imageListRef} className="LinkList">
-                {imageItems}
-              </ul>
-            </div>
-          </>
-        ) : aTagItems.length === 0 ? (
-          // No HTML links: Embedded Links left, Images right
-          <>
-            <div className="LinkListColumn">
-              <h3 className="LinkListColumnHeader">
-                Embedded Links ({scriptItems.length})
-                <button className="btn btn-xs btn-default" disabled={scriptItems.length === 0} onClick={() => copyLinks(scriptListRef.current)}>Copy</button>
-              </h3>
-              <ul ref={scriptListRef} className="LinkList">
-                {scriptItems}
-              </ul>
-            </div>
-            <div className="LinkListColumn">
-              <h3 className="LinkListColumnHeader">
-                Images ({imageItems.length})
-                <button className="btn btn-xs btn-default" disabled={imageItems.length === 0} onClick={() => copyLinks(imageListRef.current)}>Copy</button>
-              </h3>
-              <ul ref={imageListRef} className="LinkList">
-                {imageItems}
-              </ul>
-            </div>
-          </>
-        ) : (
-          // Normal: HTML Links + Images stacked left, Embedded Links right
-          <>
-            <div className="LinkListColumnGroup">
-              <div className="LinkListColumn">
-                <h3 className="LinkListColumnHeader">
-                  HTML Links ({aTagItems.length})
-                  <button className="btn btn-xs btn-default" disabled={aTagItems.length === 0} onClick={() => copyLinks(aTagListRef.current)}>Copy</button>
-                </h3>
-                <ul ref={aTagListRef} className="LinkList">
-                  {aTagItems}
-                </ul>
-              </div>
-              <div className="LinkListColumn">
-                <h3 className="LinkListColumnHeader">
-                  Images ({imageItems.length})
-                  <button className="btn btn-xs btn-default" disabled={imageItems.length === 0} onClick={() => copyLinks(imageListRef.current)}>Copy</button>
-                </h3>
-                <ul ref={imageListRef} className="LinkList">
-                  {imageItems}
-                </ul>
-              </div>
-            </div>
-            <div className="LinkListColumn">
-              <h3 className="LinkListColumnHeader">
-                Embedded Links ({scriptItems.length})
-                <button className="btn btn-xs btn-default" disabled={scriptItems.length === 0} onClick={() => copyLinks(scriptListRef.current)}>Copy</button>
-              </h3>
-              <ul ref={scriptListRef} className="LinkList">
-                {scriptItems}
-              </ul>
-            </div>
-          </>
+        {renderSection('HTML Links', aTagItems, aTagListRef)}
+        {renderSection('Embedded Links', scriptItems, scriptListRef)}
+        {hasSecondarySections && (
+          <div className="LinkListColumnGroup">
+            {renderSection('EVM Addresses', evmItems, evmListRef)}
+            {renderSection('Images', imageItems, imageListRef)}
+          </div>
         )}
       </div>
     </div>

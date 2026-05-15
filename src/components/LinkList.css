@@ -1,23 +1,23 @@
 .LinkPageHeader {
+  font-size: 24px;
+  margin: 8px 0 6px;
   white-space: nowrap;
-  line-height: normal;
+  line-height: 1.2;
   overflow-x: hidden;
   text-overflow: ellipsis;
 }
 
-.LinkPageStatus {
-  float: right;
-}
-
 .LinkList {
   list-style: none;
+  margin-bottom: 0;
   padding-left: 0;
 }
 
 .LinkListItem {
   border-bottom: 1px solid #444;
-  padding-left: 0.5em;
-  padding-right: 0.5em;
+  font-size: 12px;
+  line-height: 1.25;
+  padding: 2px 6px;
   word-wrap: break-word;
   background-color: #2a2a2a;
 }
@@ -38,16 +38,30 @@
   color: #cc7777;
 }
 
+.LinkPageOptionsForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-bottom: 10px;
+}
+
 .LinkPageOptionsForm .form-group {
-  margin-bottom: 1em;
+  margin-bottom: 0;
 }
 
 .LinkPageOptionsForm > .form-group + .form-group {
-  margin-left: 1em;
+  margin-left: 0;
 }
+
+.LinkPageOptionsForm .form-control {
+  height: 30px;
+  padding: 4px 8px;
+}
+
 @media (max-width: 767px) {
   .LinkPageOptionsForm {
-    margin-bottom: 0em;
+    margin-bottom: 8px;
   }
   .LinkPageOptionsForm > .form-group + .form-group {
     margin-left: 0;
@@ -171,37 +185,33 @@
 
 .LinkListColumns {
   display: flex;
-  gap: 20px;
-}
-
-.LinkListColumnGroup {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-width: 0;
+  flex-wrap: wrap;
+  gap: 12px;
   align-self: flex-start;
 }
 
 .LinkListColumn {
-  flex: 1;
+  flex: 1 1 260px;
   min-width: 0;
 }
 
-.LinkListColumnGroup .LinkListColumn .LinkList {
-  max-height: 50vh;
-  overflow-y: auto;
+.LinkListColumnGroup {
+  flex: 1 1 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
 
 .LinkListColumnHeader {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 10px;
-  font-size: 1.1em;
+  margin: 0 0 4px;
+  font-size: 1em;
   color: #ccc;
   border-bottom: 1px solid #555;
-  padding-bottom: 5px;
+  padding-bottom: 4px;
 }
 
 .LinkListColumnHeader .btn {
@@ -211,5 +221,10 @@
 @media (max-width: 991px) {
   .LinkListColumns {
     flex-direction: column;
+    gap: 10px;
+  }
+
+  .LinkListColumnGroup {
+    gap: 10px;
   }
 }
