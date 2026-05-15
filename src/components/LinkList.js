@@ -173,7 +173,7 @@ function getPathTail(href) {
 }
 
 function isEvmAddressLink(href) {
-  return /^(0x)?[0-9a-fA-F]{40}$/.test(getPathTail(href));
+  return /^0x[0-9a-fA-F]{40}$/.test(getPathTail(href));
 }
 
 function isDocumentationLink(hostname) {

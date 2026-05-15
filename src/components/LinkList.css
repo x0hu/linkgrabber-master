@@ -203,6 +203,10 @@
   min-width: 0;
 }
 
+.LinkListColumnGroup > .LinkListColumn {
+  flex: 0 1 auto;
+}
+
 .LinkListColumnHeader {
   display: flex;
   align-items: center;
