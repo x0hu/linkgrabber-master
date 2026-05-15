@@ -47,23 +47,17 @@ function getBaseDomain(hostname) {
   return parts.slice(-2).join('.');
 }
 
-// Get priority tier for a link (lower = higher priority)
-function getLinkPriority(link) {
+// Get priority tier for a highlighted link (lower = higher priority)
+function getHighlightPriority(link) {
   const hostname = link.hostname.toLowerCase();
-  const href = link.href;
-  // Tier 1: Base domain (handled separately)
-  // Tier 2: Social links
-  if (hostname === 'x.com' || hostname === 'twitter.com') return 2;
-  if (hostname === 't.me') return 2;
-  if (hostname.includes('discord.com') || hostname === 'discord.gg') return 2;
-  // Tier 3: Blockchain explorers / addresses
-  if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(href.split('/').pop())) return 3; // Solana
-  if (/^(0x)?[0-9a-fA-F]{40}$/.test(href.split('/').pop())) return 3; // ETH
-  // Tier 4: Documentation
-  if (hostname.includes('github.com') || hostname.includes('gitbook') ||
-      hostname.includes('docs.') || hostname.includes('whitepaper')) return 4;
-  // Tier 5: Everything else
-  return 5;
+  if (isTwitterLink(hostname)) return 1;
+  if (isTelegramLink(hostname)) return 2;
+  if (isDiscordLink(hostname)) return 3;
+  if (isInstagramLink(hostname)) return 4;
+  if (isDocumentationLink(hostname)) return 5;
+  if (isEthAddress(link.href)) return 6;
+  if (isSolanaAddress(link.href)) return 7;
+  return 8;
 }
 
 function groupLinksByDomain(links, sourceUrl) {
@@ -79,7 +73,7 @@ function groupLinksByDomain(links, sourceUrl) {
   const indexes = new Array(links.length);
   const rh = new Array(links.length);
   const isCurrentDomain = new Array(links.length);
-  const priority = new Array(links.length);
+  const highlightPriority = new Array(links.length);
   for (let i = 0; i < links.length; i++) {
     indexes[i] = i;
     const hostname = links[i].hostname.toLowerCase();
@@ -87,14 +81,16 @@ function groupLinksByDomain(links, sourceUrl) {
     // Check if link shares the same base domain
     const linkBaseDomain = getBaseDomain(hostname);
     isCurrentDomain[i] = linkBaseDomain === currentBaseDomain;
-    priority[i] = getLinkPriority(links[i]);
+    highlightPriority[i] = getHighlightPriority(links[i]);
   }
   indexes.sort((i, j) => {
-    // Current domain links come first (tier 1)
+    // Highlighted links come first in the requested order.
+    if (highlightPriority[i] !== highlightPriority[j]) {
+      return highlightPriority[i] - highlightPriority[j];
+    }
+    // Then prefer the current site for uncategorized links.
     if (isCurrentDomain[i] && !isCurrentDomain[j]) return -1;
     if (!isCurrentDomain[i] && isCurrentDomain[j]) return 1;
-    // Then sort by priority tier
-    if (priority[i] !== priority[j]) return priority[i] - priority[j];
     // Then sort alphabetically by reversed hostname
     if (rh[i] < rh[j]) return -1;
     if (rh[i] > rh[j]) return 1;
