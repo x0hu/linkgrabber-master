@@ -3,3 +3,4 @@
 dist/
 js/
 node_modules/
+scripts/generate-viem-address-blacklist.mjs

@@ -1,6 +1,9 @@
+import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
+
 (function () {
   const seenUrls = new Set();
   const seenEvmAddresses = new Set();
+  const viemEvmAddressBlacklist = new Set(VIEM_EVM_ADDRESS_BLACKLIST);
   const links = [];
   const frameUrl = window.location.href;
 
@@ -139,6 +142,7 @@
 
   function addEvmAddress(address) {
     const normalizedAddress = address.toLowerCase();
+    if (viemEvmAddressBlacklist.has(normalizedAddress)) return;
     if (seenEvmAddresses.has(normalizedAddress)) return;
     seenEvmAddresses.add(normalizedAddress);
     addLink(`https://etherscan.io/address/${address}`, address, 'evm');
