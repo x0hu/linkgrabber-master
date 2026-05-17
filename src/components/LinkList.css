@@ -108,14 +108,85 @@
   background-color: #4a4838 !important; /* dark theme beige */
 }
 
+.LinkListItemContext {
+  color: #ffd866;
+  font-weight: 600;
+}
+
+.LinkListCopyButton {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #ff8f5f;
+  background: rgba(255, 143, 95, 0.08);
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.LinkListCopyAddress {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  font-family: Menlo, Monaco, Consolas, monospace;
+}
+
+.LinkListCopyButton:hover,
+.LinkListCopyButton:focus {
+  color: #ffb28f;
+  background: rgba(255, 143, 95, 0.16);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.LinkListCopyButton:active {
+  transform: translateY(0);
+}
+
+.LinkListCopyButton--copied {
+  color: #baf7c4;
+  background: rgba(135, 232, 153, 0.14);
+}
+
+.LinkListCopyStatus {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  padding: 0;
+  color: #172615;
+  background: #87e899;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  opacity: 0;
+  transform: translateX(-3px) scale(0.85);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.LinkListCopyButton--copied .LinkListCopyStatus {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+}
+
 /* Handle combinations with other states */
 .LinkListItem--solana.LinkListItem--blocked > a,
-.LinkListItem--eth.LinkListItem--blocked > a {
+.LinkListItem--eth.LinkListItem--blocked > a,
+.LinkListItem--eth.LinkListItem--blocked .LinkListCopyButton {
   color: #ff6b6b !important;
 }
 
 .LinkListItem--solana.LinkListItem--duplicate > a,
-.LinkListItem--eth.LinkListItem--duplicate > a {
+.LinkListItem--eth.LinkListItem--duplicate > a,
+.LinkListItem--eth.LinkListItem--duplicate .LinkListCopyButton {
   color: #888 !important;
 }
 

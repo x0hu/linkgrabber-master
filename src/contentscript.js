@@ -59,6 +59,7 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
     /^https?:\/\/.*\.ingest\.(us\.)?sentry\.io\//,
     /^https?:\/\/sentry\.io\/organizations\//,
     /^https?:\/\/docs\.sentry\.io\//,
+    /^https?:\/\/(www\.)?dexscreener\.com(\/|$)/,
     // URL shorteners
     /^https?:\/\/git\.io\//,
     // Docs/tutorials
@@ -93,6 +94,8 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
     'https://registry.npmjs.org',
     'https://localhost',
     'http://localhost',
+    'https://dexscreener.com',
+    'https://www.dexscreener.com',
   ];
 
   function isIgnoredUrl(url) {
@@ -140,12 +143,27 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
     } catch (e) {}
   }
 
-  function addEvmAddress(address) {
+  function addEvmAddress(match) {
+    const address = typeof match === 'string' ? match : match.address;
+    const context = typeof match === 'string' ? '' : match.context;
     const normalizedAddress = address.toLowerCase();
     if (viemEvmAddressBlacklist.has(normalizedAddress)) return;
     if (seenEvmAddresses.has(normalizedAddress)) return;
     seenEvmAddresses.add(normalizedAddress);
-    addLink(`https://etherscan.io/address/${address}`, address, 'evm');
+    links.push({
+      hash: '',
+      host: '',
+      hostname: '',
+      href: normalizedAddress,
+      origin: '',
+      pathname: normalizedAddress,
+      search: '',
+      text: context || '',
+      address: address,
+      context: context || '',
+      source: 'evm',
+      frameUrl: frameUrl,
+    });
   }
 
   // 1. Extract from <a> tags (original behavior)
@@ -179,6 +197,10 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
   // 3. Extract URLs from inline scripts and external script content
   const urlRegex = /https?:\/\/[^\s"'`<>\\]+/g;
   const evmAddressRegex = /\b0x[0-9a-fA-F]{40}\b/g;
+  const ignoredEvmAddressUrlPatterns = [
+    /https?:\/\/(?:www\.)?dexscreener\.com\/[^\s"'`<>\\]+/gi,
+    /https?:\\\/\\\/(?:www\.)?dexscreener\.com\\\/[^\s"'`<>]+/gi,
+  ];
   // Match relative paths in string literals (e.g., "/dashboard/deposit")
   const relativePathRegex = /["'`](\/[a-zA-Z][a-zA-Z0-9\-_\/]*[a-zA-Z0-9])["'`]/g;
   // File extensions to ignore (static assets, not routes)
@@ -202,12 +224,45 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
     return paths;
   }
 
+  function getEvmAddressContext(text, index) {
+    const before = text.slice(Math.max(0, index - 500), index);
+    const propertyMatch = before.match(/(?:^|[,{;]\s*|[\s])["']?([A-Za-z_$][\w$-]*)["']?\s*:\s*["']?$/);
+    if (propertyMatch) return propertyMatch[1];
+
+    const assignmentMatch = before.match(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*["']?$/);
+    if (assignmentMatch) return assignmentMatch[1];
+
+    const memberMatch = before.match(/\.([A-Za-z_$][\w$]*)\s*=\s*["']?$/);
+    if (memberMatch) return memberMatch[1];
+
+    const propertyMatches = [...before.matchAll(/(?:^|[,{;]\s*)["']?([A-Za-z_$][\w$-]*)["']?\s*:/g)];
+    if (propertyMatches.length > 0) {
+      return propertyMatches[propertyMatches.length - 1][1];
+    }
+
+    const assignmentFallbackMatch = before.match(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;{}]*$/);
+    if (assignmentFallbackMatch) return assignmentFallbackMatch[1];
+
+    const memberFallbackMatch = before.match(/\.([A-Za-z_$][\w$]*)\s*=[^;{}]*$/);
+    if (memberFallbackMatch) return memberFallbackMatch[1];
+
+    return '';
+  }
+
   function extractEvmAddresses(text) {
     const addresses = [];
     let match;
+    let searchableText = text;
+    for (let i = 0; i < ignoredEvmAddressUrlPatterns.length; i++) {
+      ignoredEvmAddressUrlPatterns[i].lastIndex = 0;
+      searchableText = searchableText.replace(ignoredEvmAddressUrlPatterns[i], ' ');
+    }
     evmAddressRegex.lastIndex = 0;
-    while ((match = evmAddressRegex.exec(text)) !== null) {
-      addresses.push(match[0]);
+    while ((match = evmAddressRegex.exec(searchableText)) !== null) {
+      addresses.push({
+        address: match[0],
+        context: getEvmAddressContext(searchableText, match.index),
+      });
     }
     return addresses;
   }

@@ -16,11 +16,16 @@ function copyLinks(element) {
   const selection = window.getSelection();
   const prevRange = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
   const tmp = document.createElement('div');
-  const links = element.querySelectorAll('a');
-  for (let i = 0; i < links.length; i++) {
-    const clone = links[i].cloneNode(true);
-    delete (clone.dataset.reactid);
-    tmp.appendChild(clone);
+  const items = element.querySelectorAll('a, [data-copy-value]');
+  for (let i = 0; i < items.length; i++) {
+    const copyValue = items[i].dataset.copyValue;
+    if (copyValue) {
+      tmp.appendChild(document.createTextNode(copyValue));
+    } else {
+      const clone = items[i].cloneNode(true);
+      delete (clone.dataset.reactid);
+      tmp.appendChild(clone);
+    }
     tmp.appendChild(document.createElement('br'));
   }
   document.body.appendChild(tmp);
@@ -34,6 +39,22 @@ function copyLinks(element) {
   if (prevRange) {
     selection.addRange(prevRange);
   }
+}
+
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand('copy');
+  document.body.removeChild(textarea);
+  return Promise.resolve(copied);
 }
 
 // Extract base domain (e.g., app.lighter.xyz -> lighter.xyz)
@@ -204,6 +225,7 @@ export default function LinkList(props) {
   const scriptListRef = useRef(null);
   const evmListRef = useRef(null);
   const imageListRef = useRef(null);
+  const copiedTimeoutRef = useRef(null);
 
   const [filter, setFilter] = useState('');
   const [nextFilter, setNextFilter] = useState('');
@@ -211,6 +233,7 @@ export default function LinkList(props) {
   const [hideBlockedDomains, setHideBlockedDomains] = useState(true);
   const [hideDuplicates, setHideDuplicates] = useState(true);
   const [hideSameOrigin, setHideSameOrigin] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState('');
 
   const applyFilter = debounce(() => setFilter(nextFilter), 100, {trailing: true});
   const filterChanged = (event) => setNextFilter(event.target.value);
@@ -218,6 +241,19 @@ export default function LinkList(props) {
   const toggleDedup = () => setHideDuplicates(x => !x);
   const toggleGroupByDomain = () => setGroupByDomain(x => !x);
   const toggleHideSameOrigin = () => setHideSameOrigin(x => !x);
+  const copyAddress = (address) => {
+    copyText(address).then(copied => {
+      if (!copied) return;
+      setCopiedAddress(address);
+      if (copiedTimeoutRef.current) {
+        clearTimeout(copiedTimeoutRef.current);
+      }
+      copiedTimeoutRef.current = setTimeout(() => {
+        setCopiedAddress('');
+        copiedTimeoutRef.current = null;
+      }, 1200);
+    });
+  };
 
   useEffect(() => {
     const h = (event) => {
@@ -233,6 +269,14 @@ export default function LinkList(props) {
   }, []);
 
   useEffect(applyFilter, [nextFilter]);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimeoutRef.current) {
+        clearTimeout(copiedTimeoutRef.current);
+      }
+    };
+  }, []);
 
   if (props.expired) {
     return (<LinkListExpired />);
@@ -263,7 +307,8 @@ export default function LinkList(props) {
     const filterLowerCase = filter.trim().toLowerCase();
     const aTag = [];
     const script = [];
-    const evm = [];
+    const evmFromHtml = [];
+    const evmFromEmbedded = [];
     const image = [];
 
     processedLinks.forEach((link, index) => {
@@ -271,7 +316,8 @@ export default function LinkList(props) {
       if (hideBlockedDomains && blocked[index]) return;
       if (filterLowerCase) {
         const lowerHref = link.href.toLowerCase();
-        if (lowerHref.indexOf(filterLowerCase) < 0) return;
+        const lowerContext = `${link.context || ''} ${link.text || ''}`.toLowerCase();
+        if (lowerHref.indexOf(filterLowerCase) < 0 && lowerContext.indexOf(filterLowerCase) < 0) return;
       }
       const itemClassName = cx('LinkListItem', {
         'LinkListItem--blocked': blocked[index],
@@ -284,20 +330,57 @@ export default function LinkList(props) {
         'LinkListItem--discord': isDiscordLink(link.hostname),
         'LinkListItem--instagram': isInstagramLink(link.hostname),
       });
-      const item = (
-        <li key={index} className={itemClassName}>
-          <a href={link.href} target="_blank">{link.href}</a>
-        </li>
-      );
       // Categorize by source and type
       const isImage = link.source === 'image' || IMAGE_EXTENSIONS.test(link.href);
       if (isEvmAddressLink(link.href)) {
-        evm.push(item);
+        if (link.source === 'script' || link.source === 'evm') {
+          const address = link.address || getPathTail(link.href);
+          const context = link.context || link.text || '';
+          const isCopied = copiedAddress === address;
+          const item = (
+            <li key={index} className={itemClassName}>
+              {context ? <span className="LinkListItemContext">{context}: </span> : null}
+              <button
+                type="button"
+                className={cx('LinkListCopyButton', {'LinkListCopyButton--copied': isCopied})}
+                data-copy-value={address}
+                onClick={() => copyAddress(address)}
+                title={isCopied ? 'Copied' : 'Copy address'}
+                aria-label={isCopied ? `Copied ${address}` : `Copy ${address}`}>
+                <span className="LinkListCopyAddress">{address}</span>
+                <span className="LinkListCopyStatus" aria-hidden="true">✓</span>
+              </button>
+            </li>
+          );
+          evmFromEmbedded.push(item);
+        } else {
+          const item = (
+            <li key={index} className={itemClassName}>
+              <a href={link.href} target="_blank">{link.href}</a>
+            </li>
+          );
+          evmFromHtml.push(item);
+        }
       } else if (isImage) {
+        const item = (
+          <li key={index} className={itemClassName}>
+            <a href={link.href} target="_blank">{link.href}</a>
+          </li>
+        );
         image.push(item);
       } else if (link.source === 'script') {
+        const item = (
+          <li key={index} className={itemClassName}>
+            <a href={link.href} target="_blank">{link.href}</a>
+          </li>
+        );
         script.push(item);
       } else {
+        const item = (
+          <li key={index} className={itemClassName}>
+            <a href={link.href} target="_blank">{link.href}</a>
+          </li>
+        );
         aTag.push(item);
       }
     });
@@ -305,10 +388,10 @@ export default function LinkList(props) {
     return {
       aTagItems: aTag,
       scriptItems: script,
-      evmItems: evm,
+      evmItems: [...evmFromHtml, ...evmFromEmbedded],
       imageItems: image,
     };
-  }, [processedLinks, blocked, duplicates, filter, hideDuplicates, hideBlockedDomains]);
+  }, [processedLinks, blocked, duplicates, filter, hideDuplicates, hideBlockedDomains, copiedAddress]);
 
   const renderSection = (title, items, ref) => {
     if (items.length === 0) {
