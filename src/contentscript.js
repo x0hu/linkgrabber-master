@@ -1,8 +1,12 @@
 import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
+import {
+  discoverJavaScriptResourceUrls,
+  extractJavaScriptDependencyUrls,
+} from './javascriptResources';
 
 (function () {
   const seenUrls = new Set();
-  const seenEvmAddresses = new Set();
+  const seenEvmAddressReferences = new Set();
   const viemEvmAddressBlacklist = new Set(VIEM_EVM_ADDRESS_BLACKLIST);
   const links = [];
   const frameUrl = window.location.href;
@@ -74,7 +78,7 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
     /^https?:\/\/reactjs\.org\/link\//,
     // Invalid/test URLs (single-letter domains, userinfo@host, punycode test)
     /^https?:\/\/[a-z](\/|#|\?|$)/i,
-    /^https?:\/\/[^@\/]+@[^\/]+/,
+    /^https?:\/\/[^@/]+@[^/]+/,
     /^https?:\/\/xn--/i,
   ];
 
@@ -114,6 +118,10 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
     return match ? match[0].toLowerCase() : '';
   }
 
+  function getEvmAddressReferenceKey(address, referenceDomain) {
+    return `${address.toLowerCase()}|${(referenceDomain || '').toLowerCase()}`;
+  }
+
   // Helper to parse URL and create link object
   function addLink(href, text = '', source = 'a') {
     if (isIgnoredUrl(href)) return;
@@ -123,11 +131,14 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
       const normalizedHref = url.href;
       const dedupKey = normalizedHref.replace(/^https?:\/\//, '');
       if (seenUrls.has(dedupKey)) return;
-      seenUrls.add(dedupKey);
       const evmAddress = getEvmAddressFromPath(url.pathname);
       if (evmAddress) {
-        seenEvmAddresses.add(evmAddress);
+        const evmReferenceDomain = url.hostname.toLowerCase();
+        const evmReferenceKey = getEvmAddressReferenceKey(evmAddress, evmReferenceDomain);
+        if (seenEvmAddressReferences.has(evmReferenceKey)) return;
+        seenEvmAddressReferences.add(evmReferenceKey);
       }
+      seenUrls.add(dedupKey);
       links.push({
         hash: url.hash,
         host: url.host,
@@ -137,29 +148,38 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
         pathname: url.pathname,
         search: url.search,
         text: text,
+        address: evmAddress || '',
+        evmAddress: evmAddress || '',
+        evmReferenceDomain: evmAddress ? url.hostname.toLowerCase() : '',
         source: source,
         frameUrl: frameUrl,
       });
-    } catch (e) {}
+    } catch (e) {
+      // Ignore malformed link candidates.
+    }
   }
 
   function addEvmAddress(match) {
     const address = typeof match === 'string' ? match : match.address;
     const context = typeof match === 'string' ? '' : match.context;
     const normalizedAddress = address.toLowerCase();
+    const evmReferenceDomain = currentHost.toLowerCase();
+    const evmReferenceKey = getEvmAddressReferenceKey(normalizedAddress, evmReferenceDomain);
     if (viemEvmAddressBlacklist.has(normalizedAddress)) return;
-    if (seenEvmAddresses.has(normalizedAddress)) return;
-    seenEvmAddresses.add(normalizedAddress);
+    if (seenEvmAddressReferences.has(evmReferenceKey)) return;
+    seenEvmAddressReferences.add(evmReferenceKey);
     links.push({
       hash: '',
-      host: '',
-      hostname: '',
+      host: evmReferenceDomain,
+      hostname: evmReferenceDomain,
       href: normalizedAddress,
-      origin: '',
+      origin: currentOrigin,
       pathname: normalizedAddress,
       search: '',
       text: context || '',
       address: address,
+      evmAddress: normalizedAddress,
+      evmReferenceDomain: evmReferenceDomain,
       context: context || '',
       source: 'evm',
       frameUrl: frameUrl,
@@ -202,7 +222,7 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
     /https?:\\\/\\\/(?:www\.)?dexscreener\.com\\\/[^\s"'`<>]+/gi,
   ];
   // Match relative paths in string literals (e.g., "/dashboard/deposit")
-  const relativePathRegex = /["'`](\/[a-zA-Z][a-zA-Z0-9\-_\/]*[a-zA-Z0-9])["'`]/g;
+  const relativePathRegex = /["'`](\/[a-zA-Z][a-zA-Z0-9_/-]*[a-zA-Z0-9])["'`]/g;
   // File extensions to ignore (static assets, not routes)
   const ignoredExtensions = /\.(js|jsx|ts|tsx|css|scss|less|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|json|xml|txt|md|html|htm)$/i;
   const currentHost = window.location.hostname;
@@ -267,6 +287,11 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
     return addresses;
   }
 
+  // Catch addresses rendered into text, hydration state, and arbitrary element attributes.
+  // Script content is included here too; addEvmAddress handles the resulting duplicates.
+  const serializedDocument = document.documentElement ? document.documentElement.outerHTML : '';
+  extractEvmAddresses(serializedDocument).forEach(addEvmAddress);
+
   // Inline scripts
   document.querySelectorAll('script:not([src])').forEach(script => {
     const text = script.textContent;
@@ -278,7 +303,9 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
         if (parsed.hostname !== currentHost) {
           addLink(url, '', 'script');
         }
-      } catch (e) {}
+      } catch (e) {
+        // Ignore malformed URL-like strings.
+      }
     });
     // Extract relative paths and resolve to full URLs
     extractRelativePaths(text).forEach(path => {
@@ -287,40 +314,79 @@ import { VIEM_EVM_ADDRESS_BLACKLIST } from './blacklists/viemEvmAddresses';
     extractEvmAddresses(text).forEach(addEvmAddress);
   });
 
-  // External scripts - fetch and parse (with timeout to prevent hangs)
-  const fetchWithTimeout = (url, timeoutMs = 3000) => {
+  // External scripts and modules - discover and crawl a bounded same-origin graph.
+  const MAX_JAVASCRIPT_RESOURCES = 100;
+  const MAX_JAVASCRIPT_CHARACTERS = 12 * 1024 * 1024;
+  const JAVASCRIPT_FETCH_CONCURRENCY = 6;
+  const JAVASCRIPT_SCAN_BUDGET_MS = 12000;
+
+  const fetchWithTimeout = (url, timeoutMs = 4000) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     return fetch(url, { signal: controller.signal })
       .finally(() => clearTimeout(timeoutId));
   };
 
-  const scriptPromises = Array.from(document.querySelectorAll('script[src]'))
-    .filter(s => s.src.startsWith(window.location.origin))
-    .map(script =>
-      fetchWithTimeout(script.src)
-        .then(r => r.text())
-        .then(text => {
-          // Extract full URLs (external only)
-          const matches = text.match(urlRegex) || [];
-          matches.forEach(url => {
-            try {
-              const parsed = new URL(url);
-              if (parsed.hostname !== currentHost) {
-                addLink(url, '', 'script');
-              }
-            } catch (e) {}
-          });
-          // Extract relative paths and resolve to full URLs
-          extractRelativePaths(text).forEach(path => {
-            addLink(currentOrigin + path, '', 'script');
-          });
-          extractEvmAddresses(text).forEach(addEvmAddress);
-        })
-        .catch(() => {})
-    );
+  function extractScriptContent(text) {
+    const matches = text.match(urlRegex) || [];
+    matches.forEach(url => {
+      try {
+        const parsed = new URL(url);
+        if (parsed.hostname !== currentHost) {
+          addLink(url, '', 'script');
+        }
+      } catch (e) {
+        // Ignore malformed URL-like strings.
+      }
+    });
+    extractRelativePaths(text).forEach(path => {
+      addLink(currentOrigin + path, '', 'script');
+    });
+    extractEvmAddresses(text).forEach(addEvmAddress);
+  }
 
-  Promise.all(scriptPromises).then(() => {
+  const queuedResourceUrls = [];
+  const seenResourceUrls = new Set();
+  let scannedJavaScriptCharacters = 0;
+  const javascriptScanDeadline = Date.now() + JAVASCRIPT_SCAN_BUDGET_MS;
+
+  function enqueueResource(url) {
+    if (seenResourceUrls.size >= MAX_JAVASCRIPT_RESOURCES || seenResourceUrls.has(url)) return;
+    seenResourceUrls.add(url);
+    queuedResourceUrls.push(url);
+  }
+
+  discoverJavaScriptResourceUrls(document, performance, frameUrl).forEach(enqueueResource);
+  document.querySelectorAll('script:not([src])').forEach(script => {
+    extractJavaScriptDependencyUrls(script.textContent, frameUrl, currentOrigin).forEach(enqueueResource);
+  });
+
+  async function scanResource(url) {
+    try {
+      const response = await fetchWithTimeout(url);
+      if (!response.ok) return;
+      const text = await response.text();
+      if (scannedJavaScriptCharacters + text.length > MAX_JAVASCRIPT_CHARACTERS) return;
+      scannedJavaScriptCharacters += text.length;
+      extractScriptContent(text);
+      extractJavaScriptDependencyUrls(text, url, currentOrigin).forEach(enqueueResource);
+    } catch (e) {
+      // Individual resources may fail without invalidating the rest of the scan.
+    }
+  }
+
+  async function scanDiscoveredResources() {
+    while (
+      queuedResourceUrls.length > 0 &&
+      scannedJavaScriptCharacters < MAX_JAVASCRIPT_CHARACTERS &&
+      Date.now() < javascriptScanDeadline
+    ) {
+      const batch = queuedResourceUrls.splice(0, JAVASCRIPT_FETCH_CONCURRENCY);
+      await Promise.all(batch.map(scanResource));
+    }
+  }
+
+  scanDiscoveredResources().then(() => {
     chrome.runtime.sendMessage(null, {type: 'links-found', links: links});
   });
 })();

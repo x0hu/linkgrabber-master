@@ -6,6 +6,9 @@ const DEFAULT_SESSION = {
   tabData: {},
 };
 
+// Longer than the content script's bounded JavaScript scan, including its final fetch batch.
+const COLLECTION_TIMEOUT_MS = 30000;
+
 // Track pending frame collections per tab
 const pendingCollections = new Map();
 
@@ -16,6 +19,13 @@ function warnLastError() {
 }
 
 // Aggregate links from all frames and open results
+function getDedupKey(link) {
+  if (link.evmAddress) {
+    return `evm:${link.evmAddress.toLowerCase()}:${(link.evmReferenceDomain || link.hostname || '').toLowerCase()}`;
+  }
+  return link.href.replace(/^https?:\/\//, '');
+}
+
 function finalizeCollection(tabId) {
   const collection = pendingCollections.get(tabId);
   if (!collection) return;
@@ -27,7 +37,7 @@ function finalizeCollection(tabId) {
   const seenUrls = new Set();
   const allLinks = [];
   collection.links.forEach(link => {
-    const dedupKey = link.href.replace(/^https?:\/\//, '');
+    const dedupKey = getDedupKey(link);
     if (!seenUrls.has(dedupKey)) {
       seenUrls.add(dedupKey);
       allLinks.push(link);
@@ -60,7 +70,7 @@ async function startCollection(tab) {
     links: [],
     sourceUrl: tab.url,
     tabIndex: tab.index,
-    timeout: setTimeout(() => finalizeCollection(tab.id), 3000), // 3s timeout
+    timeout: setTimeout(() => finalizeCollection(tab.id), COLLECTION_TIMEOUT_MS),
   });
 
   chrome.scripting.executeScript({

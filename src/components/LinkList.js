@@ -91,7 +91,9 @@ function groupLinksByDomain(links, sourceUrl) {
     try {
       const url = new URL(sourceUrl);
       currentBaseDomain = getBaseDomain(url.hostname);
-    } catch (e) {}
+    } catch (e) {
+      // Leave the current domain empty when the source URL is malformed.
+    }
   }
 
   const indexes = new Array(links.length);
@@ -149,12 +151,21 @@ function mapBlocked(links, blockedDomains) {
 function mapDuplicates(links) {
   const uniq = new Set();
   return links.map(link => {
-    if (uniq.has(link.href)) {
+    const key = getDuplicateKey(link);
+    if (uniq.has(key)) {
       return true;
     }
-    uniq.add(link.href);
+    uniq.add(key);
     return false;
   });
+}
+
+function getDuplicateKey(link) {
+  const evmAddress = getEvmAddress(link);
+  if (evmAddress) {
+    return `evm:${evmAddress.toLowerCase()}:${(link.evmReferenceDomain || link.hostname || '').toLowerCase()}`;
+  }
+  return link.href;
 }
 
 function rejectSameOrigin(links, sourceUrl) {
@@ -169,7 +180,7 @@ function rejectSameOrigin(links, sourceUrl) {
   if (!parser.origin) {
     return links;
   }
-  return links.filter(link => link.origin !== parser.origin);
+  return links.filter(link => link.source === 'evm' || link.origin !== parser.origin);
 }
 
 function isTwitterLink(hostname) {
@@ -195,6 +206,13 @@ function getPathTail(href) {
 
 function isEvmAddressLink(href) {
   return /^0x[0-9a-fA-F]{40}$/.test(getPathTail(href));
+}
+
+function getEvmAddress(link) {
+  if (link.evmAddress) return link.evmAddress;
+  if (link.address && /^0x[0-9a-fA-F]{40}$/.test(link.address)) return link.address;
+  if (isEvmAddressLink(link.href)) return getPathTail(link.href);
+  return '';
 }
 
 function isDocumentationLink(hostname) {
@@ -333,8 +351,8 @@ export default function LinkList(props) {
       // Categorize by source and type
       const isImage = link.source === 'image' || IMAGE_EXTENSIONS.test(link.href);
       if (isEvmAddressLink(link.href)) {
-        if (link.source === 'script' || link.source === 'evm') {
-          const address = link.address || getPathTail(link.href);
+        if (link.source === 'evm') {
+          const address = link.address || link.evmAddress || getPathTail(link.href);
           const context = link.context || link.text || '';
           const isCopied = copiedAddress === address;
           const item = (
