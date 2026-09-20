@@ -1,3 +1,5 @@
+import {getLinkIdentity} from './linkIdentity';
+
 const DEFAULT_SETTINGS = {
   blockedDomains: ['bad1.example.com', 'bad2.example.com', 'bad4.example.com'],
 };
@@ -19,16 +21,9 @@ function warnLastError() {
 }
 
 // Aggregate links from all frames and open results
-function getDedupKey(link) {
-  if (link.evmAddress) {
-    return `evm:${link.evmAddress.toLowerCase()}:${(link.evmReferenceDomain || link.hostname || '').toLowerCase()}`;
-  }
-  return link.href.replace(/^https?:\/\//, '');
-}
-
-function finalizeCollection(tabId) {
+function finalizeCollection(tabId, scanId) {
   const collection = pendingCollections.get(tabId);
-  if (!collection) return;
+  if (!collection || collection.scanId !== scanId) return;
 
   clearTimeout(collection.timeout);
   pendingCollections.delete(tabId);
@@ -37,7 +32,7 @@ function finalizeCollection(tabId) {
   const seenUrls = new Set();
   const allLinks = [];
   collection.links.forEach(link => {
-    const dedupKey = getDedupKey(link);
+    const dedupKey = getLinkIdentity(link);
     if (!seenUrls.has(dedupKey)) {
       seenUrls.add(dedupKey);
       allLinks.push(link);
@@ -59,24 +54,51 @@ function finalizeCollection(tabId) {
   });
 }
 
-// Start collection for a tab - count frames and set timeout
+// Each injection is tied to a scan and document. A failed or navigated frame
+// must not make the other frames wait for the fallback timeout.
 async function startCollection(tab) {
-  const frames = await chrome.webNavigation.getAllFrames({ tabId: tab.id });
-  const frameCount = frames ? frames.length : 1;
-
-  pendingCollections.set(tab.id, {
-    expectedFrames: frameCount,
-    receivedFrames: 0,
-    links: [],
-    sourceUrl: tab.url,
-    tabIndex: tab.index,
-    timeout: setTimeout(() => finalizeCollection(tab.id), COLLECTION_TIMEOUT_MS),
-  });
-
-  chrome.scripting.executeScript({
-    target: { tabId: tab.id, allFrames: true },
-    files: ['js/contentscript.js'],
-  });
+  const previous = pendingCollections.get(tab.id);
+  if (previous) clearTimeout(previous.timeout);
+  const scanId = crypto.randomUUID();
+  const collection = {
+    scanId, pendingFrames: new Set(), links: [],
+    sourceUrl: tab.url, tabIndex: tab.index,
+    timeout: setTimeout(() => finalizeCollection(tab.id, scanId), COLLECTION_TIMEOUT_MS),
+  };
+  pendingCollections.set(tab.id, collection);
+  let frames;
+  try {
+    frames = await chrome.webNavigation.getAllFrames({tabId: tab.id});
+  } catch (error) {
+    frames = null;
+  }
+  if (pendingCollections.get(tab.id) !== collection) return;
+  frames = frames?.length ? frames : [{frameId: 0}];
+  frames.forEach(frame => collection.pendingFrames.add(frame.frameId));
+  await Promise.all(frames.map(async frame => {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: {tabId: tab.id, frameIds: [frame.frameId]},
+        files: ['js/contentscript.js'],
+      });
+      if (pendingCollections.get(tab.id) !== collection) return;
+      if (!results?.length) throw new Error('Frame unavailable');
+      const documentId = results[0].documentId;
+      const scans = await chrome.scripting.executeScript({
+        target: documentId ? {tabId: tab.id, documentIds: [documentId]} : {tabId: tab.id, frameIds: [frame.frameId]},
+        func: () => window.__linkGrabberScan(),
+      });
+      if (pendingCollections.get(tab.id) !== collection) return;
+      for (const scan of scans || []) {
+        if (Array.isArray(scan.result)) collection.links.push(...scan.result);
+      }
+      collection.pendingFrames.delete(frame.frameId);
+      if (!collection.pendingFrames.size) finalizeCollection(tab.id, scanId);
+    } catch (error) {
+      collection.pendingFrames.delete(frame.frameId);
+      if (!collection.pendingFrames.size) finalizeCollection(tab.id, scanId);
+    }
+  }));
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -111,23 +133,4 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
     delete session.tabData[tabId];
     chrome.storage.session.set(session);
   });
-});
-
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'links-found') {
-    const tabId = sender.tab.id;
-    const collection = pendingCollections.get(tabId);
-
-    if (collection) {
-      // Add links from this frame
-      collection.links.push(...msg.links);
-      collection.receivedFrames++;
-
-      // Check if all frames responded
-      if (collection.receivedFrames >= collection.expectedFrames) {
-        finalizeCollection(tabId);
-      }
-    }
-    return;
-  }
 });

@@ -39,3 +39,19 @@ Attribution 3.0 License
 
 Files in vendor/bootstrap are licensed under the apache-2.0 license
 (vendor/bootstrap/LICENSE)
+
+## Extraction and limits
+
+The scan collects anchors, images, raw EVM addresses, and literal URLs/endpoints from page markup and JavaScript. Distinct paths, query strings, and HTTP/HTTPS destinations remain distinct even when they contain the same address. Explicit token addresses are preserved; the old global viem/l2beat blacklist is no longer applied.
+
+Web3Icons address metadata is suppressed only in script bodies containing the TokenIcon runtime markers and an assigned catalog array used by a metadata lookup. Standalone application records and visible page text remain eligible. Unknown catalog formats are preserved rather than guessed away.
+
+JavaScript fetching uses up to six active requests and follows literal module dependencies. Same-origin resources have priority; readable cross-origin resources use the remaining budget. Limits remain 100 resources, 12 MiB of JavaScript characters, and a 12-second window for starting requests per frame. Headers have a four-second timeout; body reads are bounded by the 30-second collection window. Failed/unavailable frames do not hold completed frames until that fallback.
+
+This is static extraction, not a guarantee of every possible endpoint. Browser CORS restrictions, scan limits, inaccessible frames, runtime-generated URLs and resources loaded after the scan can limit coverage. Existing library-domain/static-asset filters still apply.
+
+## Verification
+
+- `npm test` runs extraction, catalog-filter, scheduling, identity and worker integration regressions.
+- `npx eslint src test` checks JavaScript style and common errors.
+- `npm run build` rebuilds the unpacked extension. Reload it in the browser's extensions page after building.

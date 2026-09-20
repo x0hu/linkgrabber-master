@@ -51,11 +51,12 @@ test('deduplicates script, preload, and performance resource discoveries', () =>
       resource,
       'https://example.com/assets/lazy.js',
       'https://example.com/assets/observed.mjs',
+      'https://cdn.example.net/external.js',
     ],
   );
 });
 
-test('discovers same-origin static, re-exported, and dynamic dependencies', () => {
+test('discovers HTTP static, re-exported, and dynamic dependencies', () => {
   const source = [
     'import "./side-effect.js";',
     'import value from "./static.js";',
@@ -72,9 +73,15 @@ test('discovers same-origin static, re-exported, and dynamic dependencies', () =
     ),
     [
       'https://example.com/assets/lazy.js',
+      'https://cdn.example.net/external.js',
       'https://example.com/assets/side-effect.js',
       'https://example.com/assets/static.js',
       'https://example.com/shared.mjs',
     ],
   );
+});
+
+test('does not fetch package names, data URLs, credentials or unresolved imports', () => {
+  const source = 'import "react"; import("data:text/javascript,hello"); import("https://user:password@cdn.test/app.js"); import(`./${name}.js`);';
+  assert.deepEqual(extractJavaScriptDependencyUrls(source, 'https://site.test/app.js'), []);
 });

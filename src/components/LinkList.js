@@ -1,7 +1,7 @@
 import React from 'react';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import cx from 'classnames';
-import debounce from 'lodash.debounce';
+import {getLinkIdentity} from '../linkIdentity';
 import LinkListEmpty from './LinkListEmpty';
 import LinkListExpired from './LinkListExpired';
 import './LinkList.css';
@@ -151,21 +151,13 @@ function mapBlocked(links, blockedDomains) {
 function mapDuplicates(links) {
   const uniq = new Set();
   return links.map(link => {
-    const key = getDuplicateKey(link);
+    const key = getLinkIdentity(link);
     if (uniq.has(key)) {
       return true;
     }
     uniq.add(key);
     return false;
   });
-}
-
-function getDuplicateKey(link) {
-  const evmAddress = getEvmAddress(link);
-  if (evmAddress) {
-    return `evm:${evmAddress.toLowerCase()}:${(link.evmReferenceDomain || link.hostname || '').toLowerCase()}`;
-  }
-  return link.href;
 }
 
 function rejectSameOrigin(links, sourceUrl) {
@@ -208,13 +200,6 @@ function isEvmAddressLink(href) {
   return /^0x[0-9a-fA-F]{40}$/.test(getPathTail(href));
 }
 
-function getEvmAddress(link) {
-  if (link.evmAddress) return link.evmAddress;
-  if (link.address && /^0x[0-9a-fA-F]{40}$/.test(link.address)) return link.address;
-  if (isEvmAddressLink(link.href)) return getPathTail(link.href);
-  return '';
-}
-
 function isDocumentationLink(hostname) {
   const lowerHostname = hostname.toLowerCase();
   return lowerHostname.includes('github.com') || 
@@ -253,7 +238,6 @@ export default function LinkList(props) {
   const [hideSameOrigin, setHideSameOrigin] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState('');
 
-  const applyFilter = debounce(() => setFilter(nextFilter), 100, {trailing: true});
   const filterChanged = (event) => setNextFilter(event.target.value);
   const toggleBlockedLinks = () => setHideBlockedDomains(x => !x);
   const toggleDedup = () => setHideDuplicates(x => !x);
@@ -286,7 +270,10 @@ export default function LinkList(props) {
     };
   }, []);
 
-  useEffect(applyFilter, [nextFilter]);
+  useEffect(() => {
+    const timeout = setTimeout(() => setFilter(nextFilter), 100);
+    return () => clearTimeout(timeout);
+  }, [nextFilter]);
 
   useEffect(() => {
     return () => {

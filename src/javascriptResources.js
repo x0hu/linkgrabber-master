@@ -1,20 +1,19 @@
 const JAVASCRIPT_PATH = /\.(?:c|m)?js(?:$|[?#])/i;
 
-function toSameOriginUrl(value, baseUrl, origin) {
+function toResourceUrl(value, baseUrl) {
   if (!value || value.startsWith('data:') || value.startsWith('blob:')) return '';
   try {
     const url = new URL(value, baseUrl);
-    return url.origin === origin && /^https?:$/.test(url.protocol) ? url.href : '';
+    return /^https?:$/.test(url.protocol) && !url.username && !url.password ? url.href : '';
   } catch (e) {
     return '';
   }
 }
 
 export function discoverJavaScriptResourceUrls(document, performance, pageUrl) {
-  const origin = new URL(pageUrl).origin;
   const urls = new Set();
   const add = value => {
-    const url = toSameOriginUrl(value, pageUrl, origin);
+    const url = toResourceUrl(value, pageUrl);
     if (url) urls.add(url);
   };
 
@@ -33,7 +32,7 @@ export function discoverJavaScriptResourceUrls(document, performance, pageUrl) {
   return [...urls];
 }
 
-export function extractJavaScriptDependencyUrls(text, resourceUrl, pageOrigin) {
+export function extractJavaScriptDependencyUrls(text, resourceUrl) {
   const urls = new Set();
   const patterns = [
     /\bimport\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g,
@@ -45,7 +44,8 @@ export function extractJavaScriptDependencyUrls(text, resourceUrl, pageOrigin) {
     pattern.lastIndex = 0;
     let match;
     while ((match = pattern.exec(text)) !== null) {
-      const url = toSameOriginUrl(match[1], resourceUrl, pageOrigin);
+      if (!/^(?:\.{1,2}\/|\/|https?:\/\/)/.test(match[1]) || match[1].includes('${')) continue;
+      const url = toResourceUrl(match[1], resourceUrl);
       if (url) urls.add(url);
     }
   });
