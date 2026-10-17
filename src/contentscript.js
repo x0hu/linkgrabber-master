@@ -1,3 +1,5 @@
+import {isExcludedAddress, hasExcludedAddress} from './excludedAddresses';
+import {addressSource} from './addressSource';
 import { maskWeb3IconCatalog } from './web3IconCatalog';
 import { extractScriptUrls } from './scriptUrls';
 import { scanJavaScriptResources } from './javascriptScan';
@@ -126,8 +128,8 @@ window.__linkGrabberScan = async function () {
   }
 
   // Helper to parse URL and create link object
-  function addLink(href, text = '', source = 'a') {
-    if (isIgnoredUrl(href)) return;
+  function addLink(href, text = '', source = 'a', provenance = addressSource('page', frameUrl)) {
+    if (isIgnoredUrl(href) || hasExcludedAddress(href)) return;
     try {
       const url = new URL(href);
       // Different destinations and protocols remain distinct links.
@@ -155,18 +157,20 @@ window.__linkGrabberScan = async function () {
         evmReferenceDomain: evmAddress ? url.hostname.toLowerCase() : '',
         source: source,
         frameUrl: frameUrl,
+        ...provenance,
       });
     } catch (e) {
       // Ignore malformed link candidates.
     }
   }
 
-  function addEvmAddress(match) {
+  function addEvmAddress(match, provenance) {
     const address = typeof match === 'string' ? match : match.address;
     const context = typeof match === 'string' ? '' : match.context;
+    if (isExcludedAddress(address)) return;
     const normalizedAddress = address.toLowerCase();
     const evmReferenceDomain = currentHost.toLowerCase();
-    const evmReferenceKey = getEvmAddressReferenceKey(normalizedAddress, evmReferenceDomain);
+    const evmReferenceKey = getEvmAddressReferenceKey(normalizedAddress, evmReferenceDomain) + '|' + provenance.evmSourceKind + '|' + provenance.evmSourceUrl;
     if (seenEvmAddressReferences.has(evmReferenceKey)) return;
     seenEvmAddressReferences.add(evmReferenceKey);
     links.push({
@@ -183,6 +187,7 @@ window.__linkGrabberScan = async function () {
       evmReferenceDomain: evmReferenceDomain,
       context: context || '',
       source: 'evm',
+      ...provenance,
       frameUrl: frameUrl,
     });
   }
@@ -262,7 +267,7 @@ window.__linkGrabberScan = async function () {
     evmAddressRegex.lastIndex = 0;
     while ((match = evmAddressRegex.exec(searchableText)) !== null) {
       const normalized = match[0].toLowerCase();
-      if (seenInText.has(normalized) || seenEvmAddressReferences.has(getEvmAddressReferenceKey(normalized, currentHost))) continue;
+      if (seenInText.has(normalized)) continue;
       seenInText.add(normalized);
       addresses.push({
         address: match[0],
@@ -276,15 +281,16 @@ window.__linkGrabberScan = async function () {
   // Only script bodies are eligible for library catalog suppression.
   const serializedDocument = document.documentElement ? document.documentElement.outerHTML : '';
   const pageMarkup = withoutScriptBodies(serializedDocument);
-  extractEvmAddresses(pageMarkup).forEach(addEvmAddress);
+  extractEvmAddresses(pageMarkup).forEach(match => addEvmAddress(match, addressSource('page', frameUrl)));
 
-  function extractScriptContent(text) {
-    extractScriptUrls(text, frameUrl).forEach(url => addLink(url, '', 'script'));
-    extractEvmAddresses(text, true).forEach(addEvmAddress);
+  function extractScriptContent(text, url, kind = 'script') {
+    const provenance = addressSource(kind, url);
+    extractScriptUrls(text, frameUrl).forEach(url => addLink(url, '', 'script', provenance));
+    extractEvmAddresses(text, true).forEach(match => addEvmAddress(match, provenance));
   }
 
   const inlineScripts = [...document.querySelectorAll('script')].filter(script => script.textContent);
-  inlineScripts.forEach(script => extractScriptContent(script.textContent));
+  inlineScripts.forEach((script, index) => extractScriptContent(script.textContent, `${frameUrl}#inline-script-${index + 1}`, 'inline'));
   const initialUrls = discoverJavaScriptResourceUrls(document, performance, frameUrl);
   inlineScripts.forEach(script => {
     initialUrls.push(...extractJavaScriptDependencyUrls(script.textContent, frameUrl));

@@ -57,3 +57,14 @@ test('retains inline body references even on script elements with a src attribut
   const {links} = await scan({html: `<script src="/unavailable.js">${body}</script>`, scriptBodies: [body]});
   assert.ok(links.some(link => link.evmAddress === address));
 });
+
+test('excludes placeholder and burn addresses in HTML, scripts and linked destinations regardless of case', async () => {
+  const excluded = ['0x0000000000000000000000000000000000000000', '0xeEeEeEeEeEeEeEeEeEeEeEeEeEeEeEeEeEeEeEeE', '0x000000000000000000000000000000000000dEaD'];
+  const {links} = await scan({
+    html: excluded.join(' '),
+    inline: JSON.stringify([...excluded, address]),
+    anchors: excluded.map(value => `https://explorer.test/address/${value}`),
+    resources: {'https://site.test/app.js': JSON.stringify(excluded)},
+  });
+  assert.deepEqual(links.map(link => link.evmAddress), [address]);
+});

@@ -1,7 +1,10 @@
+import {isExcludedAddressLink} from '../excludedAddresses';
 import React from 'react';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import cx from 'classnames';
-import {getLinkIdentity} from '../linkIdentity';
+import {CHAINS} from '../chainRpc';
+import {addressSourceGroup} from '../addressSource';
+import {getLinkIdentity, mergeAddressOccurrences} from '../linkIdentity';
 import LinkListEmpty from './LinkListEmpty';
 import LinkListExpired from './LinkListExpired';
 import './LinkList.css';
@@ -227,6 +230,8 @@ export default function LinkList(props) {
   const aTagListRef = useRef(null);
   const scriptListRef = useRef(null);
   const evmListRef = useRef(null);
+  const evmScriptListRef = useRef(null);
+  const evmPackageListRef = useRef(null);
   const imageListRef = useRef(null);
   const copiedTimeoutRef = useRef(null);
 
@@ -289,15 +294,20 @@ export default function LinkList(props) {
 
   // Memoize expensive link processing to avoid recalculation on every render
   const processedLinks = useMemo(() => {
-    let result = props.links.slice(0);
+    let result = props.links.filter(link => !isExcludedAddressLink(link));
     if (hideSameOrigin) {
       result = rejectSameOrigin(result, props.source);
     }
+    if (hideBlockedDomains) {
+      const hidden = mapBlocked(result, props.blockedDomains);
+      result = result.filter((link, index) => !hidden[index]);
+    }
+    if (hideDuplicates) result = mergeAddressOccurrences(result);
     if (groupByDomain) {
       result = groupLinksByDomain(result, props.source);
     }
     return result;
-  }, [props.links, props.source, hideSameOrigin, groupByDomain]);
+  }, [props.links, props.source, props.blockedDomains, hideSameOrigin, hideBlockedDomains, groupByDomain, hideDuplicates]);
 
   if (processedLinks.length === 0 && props.links.length === 0) {
     return (<LinkListEmpty source={props.source} />);
@@ -308,12 +318,14 @@ export default function LinkList(props) {
   const duplicates = useMemo(() => mapDuplicates(processedLinks), [processedLinks]);
 
   // Memoize categorized items
-  const { aTagItems, scriptItems, evmItems, imageItems } = useMemo(() => {
+  const { aTagItems, scriptItems, evmItems, evmScriptItems, evmPackageItems, imageItems } = useMemo(() => {
     const filterLowerCase = filter.trim().toLowerCase();
     const aTag = [];
     const script = [];
     const evmFromHtml = [];
     const evmFromEmbedded = [];
+    const evmFromPackages = [];
+    const evmGroups = {page: evmFromHtml, script: evmFromEmbedded, package: evmFromPackages};
     const image = [];
 
     processedLinks.forEach((link, index) => {
@@ -321,7 +333,7 @@ export default function LinkList(props) {
       if (hideBlockedDomains && blocked[index]) return;
       if (filterLowerCase) {
         const lowerHref = link.href.toLowerCase();
-        const lowerContext = `${link.context || ''} ${link.text || ''}`.toLowerCase();
+        const lowerContext = `${link.context || ''} ${link.text || ''} ${link.evmSourceUrl || ''} ${link.evmPackage || ''} ${(link.evmOccurrences || []).map(item => `${item.url} ${item.context}`).join(' ')}`.toLowerCase();
         if (lowerHref.indexOf(filterLowerCase) < 0 && lowerContext.indexOf(filterLowerCase) < 0) return;
       }
       const itemClassName = cx('LinkListItem', {
@@ -338,6 +350,29 @@ export default function LinkList(props) {
       // Categorize by source and type
       const isImage = link.source === 'image' || IMAGE_EXTENSIONS.test(link.href);
       if (isEvmAddressLink(link.href)) {
+        const sourceLabel = link.evmSourceKind === 'page' ? 'Page HTML' :
+          link.evmSourceKind === 'inline' ? 'Inline script' :
+          link.evmPackage ? `Package path: ${link.evmPackage}` : 'Script, package unknown';
+        const chainMatches = (props.metadata || []).filter(entry => entry.address === (link.evmAddress || link.address || getPathTail(link.href)).toLowerCase());
+        const positive = value => typeof value === 'string' && /^0x[0-9a-f]+$/i.test(value) && /[1-9a-f]/i.test(value.slice(2));
+        const namedContracts = chainMatches.filter(entry => entry.hasCode && (entry.name || entry.symbol))
+          .sort((a, b) => CHAINS.findIndex(chain => chain.id === a.chainId) - CHAINS.findIndex(chain => chain.id === b.chainId));
+        const locations = [
+          ['Contract on', chainMatches.filter(entry => entry.hasCode && !entry.name && !entry.symbol)],
+          ['Native balance on', chainMatches.filter(entry => positive(entry.balance))],
+          ['Sent transactions on', chainMatches.filter(entry => !entry.hasCode && positive(entry.transactionCount))],
+        ].filter(([, entries]) => entries.length);
+        const chainMetadata = locations.length || namedContracts.length ? (<div className="LinkListChainMetadata">
+          {namedContracts.map(entry => (<div key={entry.chainId}>
+            {CHAINS.find(chain => chain.id === entry.chainId)?.name || entry.chainId}: {entry.name || entry.symbol}{entry.name && entry.symbol ? ` (${entry.symbol})` : ''}
+          </div>))}
+          {locations.map(([label, entries]) => (<div key={label}>
+          {label}: {entries.sort((a, b) => CHAINS.findIndex(chain => chain.id === a.chainId) - CHAINS.findIndex(chain => chain.id === b.chainId)).map(entry => CHAINS.find(chain => chain.id === entry.chainId)?.name || entry.chainId).join(', ')}
+        </div>))}</div>) : null;
+        const occurrences = link.evmOccurrences || [{url: link.evmSourceUrl, context: ''}];
+        const provenance = occurrences.filter(item => item.url).map((item, index) => (
+          <small key={index} className="LinkListAddressSource">{item.kind === 'inline' ? 'Inline script' : item.kind === 'page' ? 'Page HTML' : item.kind === 'package' ? `Package path: ${item.package}` : item.kind === 'script' ? 'Script, package unknown' : sourceLabel}: {item.url}{index > 0 && item.context ? ` (${item.context})` : ''}</small>
+        ));
         if (link.source === 'evm') {
           const address = link.address || link.evmAddress || getPathTail(link.href);
           const context = link.context || link.text || '';
@@ -355,16 +390,20 @@ export default function LinkList(props) {
                 <span className="LinkListCopyAddress">{address}</span>
                 <span className="LinkListCopyStatus" aria-hidden="true">✓</span>
               </button>
+              {chainMetadata}
+              {provenance}
             </li>
           );
-          evmFromEmbedded.push(item);
+          evmGroups[addressSourceGroup(link)].push(item);
         } else {
           const item = (
             <li key={index} className={itemClassName}>
               <a href={link.href} target="_blank">{link.href}</a>
+              {chainMetadata}
+              {provenance}
             </li>
           );
-          evmFromHtml.push(item);
+          evmGroups[addressSourceGroup(link)].push(item);
         }
       } else if (isImage) {
         const item = (
@@ -393,10 +432,12 @@ export default function LinkList(props) {
     return {
       aTagItems: aTag,
       scriptItems: script,
-      evmItems: [...evmFromHtml, ...evmFromEmbedded],
+      evmItems: evmFromHtml,
+      evmScriptItems: evmFromEmbedded,
+      evmPackageItems: evmFromPackages,
       imageItems: image,
     };
-  }, [processedLinks, blocked, duplicates, filter, hideDuplicates, hideBlockedDomains, copiedAddress]);
+  }, [processedLinks, blocked, duplicates, filter, hideDuplicates, hideBlockedDomains, copiedAddress, props.metadata]);
 
   const renderSection = (title, items, ref) => {
     if (items.length === 0) {
@@ -415,7 +456,7 @@ export default function LinkList(props) {
     );
   };
 
-  const hasSecondarySections = evmItems.length > 0 || imageItems.length > 0;
+  const hasSecondarySections = evmItems.length > 0 || evmScriptItems.length > 0 || evmPackageItems.length > 0 || imageItems.length > 0;
 
   return (
     <div className="container-fluid">
@@ -446,7 +487,10 @@ export default function LinkList(props) {
         {renderSection('Embedded Links', scriptItems, scriptListRef)}
         {hasSecondarySections && (
           <div className="LinkListColumnGroup">
-            {renderSection('EVM Addresses', evmItems, evmListRef)}
+            <p className="LinkListAddressNote">Address matches are not verified contracts. Script matches may be library constants or unused configuration.</p>
+            {renderSection('EVM · Page HTML', evmItems, evmListRef)}
+            {renderSection('EVM · Scripts / unattributed bundles', evmScriptItems, evmScriptListRef)}
+            {renderSection('EVM · Package files', evmPackageItems, evmPackageListRef)}
             {renderSection('Images', imageItems, imageListRef)}
           </div>
         )}

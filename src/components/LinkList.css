@@ -303,3 +303,31 @@
     gap: 10px;
   }
 }
+
+.LinkListAddressSource {
+  display: block;
+  color: #ccc;
+  overflow-wrap: anywhere;
+  margin: 3px 0;
+}
+
+.LinkListAddressNote {
+  color: #aaa;
+  font-size: 12px;
+  margin: 0;
+}
+
+.LinkMetadataOptions, .LinkMetadataStatus {
+  margin: 8px 15px;
+  color: #ccc;
+  font-size: 12px;
+}
+.LinkMetadataOptions label {
+  display: inline-block;
+  margin: 4px 12px 4px 0;
+}
+.LinkListChainMetadata {
+  color: #baf7c4;
+  font-size: 11px;
+  margin: 3px 0;
+}
