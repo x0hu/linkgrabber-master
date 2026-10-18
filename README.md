@@ -58,9 +58,9 @@ This is static extraction, not a guarantee of every possible endpoint. Browser C
 
 ## Address sources and chain lookups
 
-Results separate addresses found in page HTML, scripts, and identifiable package paths. Source URLs remain visible. With duplicate hiding enabled, repeated raw addresses share a row, and a matching hyperlink takes priority over the raw address. Different destination URLs remain separate. The zero address, native-token placeholder `0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee`, and `0x000000000000000000000000000000000000dead` are excluded case-insensitively.
+Results separate addresses found in page HTML, scripts, and identifiable package paths. Source URLs remain visible. Repeated raw addresses share a row, and a matching hyperlink takes priority over the raw address. Different destination URLs remain separate. The zero address, native-token placeholder `0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee`, and `0x000000000000000000000000000000000000dead` are excluded case-insensitively.
 
-Chain checks support BNB, Ethereum, Base, Monad, Avalanche, Arbitrum, HyperEVM, Robinhood mainnet, Ethereum Sepolia, Base Sepolia, Ink, and X Layer. The results page lets you disable individual chains. Names and symbols appear when available; unnamed contracts are grouped by chain. Native balances and sent-transaction counts are checked too. These checks do not provide full activity history, token balances, or proof of which chain a site intends to use.
+Chain checks support BNB, Ethereum, Base, Monad, Avalanche, Arbitrum, HyperEVM, Robinhood mainnet, Ethereum Sepolia, Base Sepolia, Ink, and X Layer. All supported chains are checked automatically. Names and symbols appear when available; unnamed contracts are grouped by chain. Native balances and sent-transaction counts are checked too. These checks do not provide full activity history, token balances, or proof of which chain a site intends to use.
 
 Lookups use public HTTPS endpoints from Chainlist with a bundled fallback catalog. JSON-RPC batches validate the returned chain ID and try up to three endpoints, with 2.5 seconds per attempt, four concurrent batches, and a 15-second overall RPC budget. Up to 100 unique addresses are checked per scan. Addresses are sent to RPC providers; page URLs are not included in those requests. Provider failures remain unknown, rather than being cached as absent contracts.
 
@@ -71,7 +71,7 @@ Successful batches are saved to `chrome.storage.local` as they complete. The cac
 
 Open **Resolver settings** from the results page and save the base URL of the updated evmoleSIG service. HTTPS is required for remote services; localhost also supports HTTP. Leave the setting blank to retain local-only behavior. The service must include the `/linkgrabber/health`, `/linkgrabber/lookup`, `/linkgrabber/metadata`, and `/linkgrabber/scans` routes.
 
-Metadata lookup order is fresh local cache, fresh remote cache, then RPCs. Refresh bypasses both caches. RPC results are uploaded in batches. Resolver failures do not prevent RPC lookups or local results. All metadata lookups remain limited to the configured chains and first 100 unique addresses.
+Metadata lookup order is fresh local cache, fresh remote cache, then RPCs. Refresh bypasses both caches. RPC results are uploaded in batches. Resolver failures do not prevent RPC lookups or local results. All metadata lookups remain limited to all supported chains and first 100 unique addresses.
 
 Saving a resolver URL enables sending found addresses, chain metadata and the source hostname to that service. Page paths, query strings, and script contents are not uploaded. Each extraction gets a stable UUID stored with its results. Reopening results or refreshing metadata reuses the UUID and does not increment site counts; scanning a page again creates a new UUID. Each address is counted once per scan regardless of duplicate HTML or script occurrences. New addresses are marked “New on this site”; this does not imply recent deployment. Older result pages without a scan ID are not posted to history. Site histories accept up to 10,000 addresses per scan and report an error rather than silently truncating larger scans.
 
@@ -81,3 +81,5 @@ The resolver uses the same PostgreSQL database as the signature service, with se
 Site counts group all paths and subdomains under the registrable domain, such as `example.com` or `example.co.uk`. The backend performs normalization with the Public Suffix List and migrates existing hostname records on startup. All subdomains count together, including hosted tenants: `alice.github.io` and `bob.github.io` count as `github.io`. HTTP/HTTPS, ports and paths do not affect site identity. Install the backend dependency update with `npm ci` and restart the updated resolver before using these domain-level counts. Reopening results returns the current counts without creating another scan.
 
 Address badges show the distinct-domain count only when it exceeds one. Within each EVM source section, addresses with a contract name or symbol come first, then addresses sort by ascending distinct-domain count. Unknown counts follow known counts within each group. This applies to both raw addresses and address hyperlinks.
+
+Duplicate hiding and blocked-domain filtering are always enabled; their toolbar toggles have been removed.

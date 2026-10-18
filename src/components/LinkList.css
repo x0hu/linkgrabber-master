@@ -317,15 +317,6 @@
   margin: 0;
 }
 
-.LinkMetadataOptions, .LinkMetadataStatus {
-  margin: 8px 15px;
-  color: #ccc;
-  font-size: 12px;
-}
-.LinkMetadataOptions label {
-  display: inline-block;
-  margin: 4px 12px 4px 0;
-}
 .LinkListChainMetadata {
   color: #baf7c4;
   font-size: 11px;
@@ -355,4 +346,34 @@
   color: #ccc;
   font-size: 12px;
   white-space: nowrap;
+}
+
+
+.LinkPageOptionsForm {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.LinkPageOptionsForm .LinkPageHeader {
+  margin: 0;
+  flex: 0 1 280px;
+  min-width: 120px;
+  font-size: 20px;
+}
+.LinkPageOptionsForm button {
+  padding: 3px 7px;
+  border: 1px solid #666;
+  border-radius: 4px;
+  background: #303030;
+  color: #ddd;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.LinkPageOptionsForm button:hover {
+  background: #444;
+}
+.LinkMetadataHistoryStatus {
+  margin: 6px 0;
+  color: #ccc;
+  font-size: 12px;
 }

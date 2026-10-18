@@ -249,14 +249,12 @@ export default function LinkList(props) {
   const [filter, setFilter] = useState('');
   const [nextFilter, setNextFilter] = useState('');
   const [groupByDomain, setGroupByDomain] = useState(true);
-  const [hideBlockedDomains, setHideBlockedDomains] = useState(true);
-  const [hideDuplicates, setHideDuplicates] = useState(true);
+  const hideBlockedDomains = true;
+  const hideDuplicates = true;
   const [hideSameOrigin, setHideSameOrigin] = useState(false);
   const [copiedAddress, setCopiedAddress] = useState('');
 
   const filterChanged = (event) => setNextFilter(event.target.value);
-  const toggleBlockedLinks = () => setHideBlockedDomains(x => !x);
-  const toggleDedup = () => setHideDuplicates(x => !x);
   const toggleGroupByDomain = () => setGroupByDomain(x => !x);
   const toggleHideSameOrigin = () => setHideSameOrigin(x => !x);
   const copyAddress = (address) => {
@@ -492,16 +490,11 @@ export default function LinkList(props) {
 
   return (
     <div className="container-fluid">
-      <h1 className="LinkPageHeader">{props.source}</h1>
       <div className="clearfix">
         <div className="form-inline LinkPageOptionsForm">
+          <h1 className="LinkPageHeader" title={props.source}>{props.source}</h1>
+          {props.toolbarControls}
           <div className="form-group">
-            <label className="checkbox-inline">
-              <input type="checkbox" checked={hideDuplicates} onChange={toggleDedup} /> Hide duplicate links
-            </label>
-            <label className="checkbox-inline">
-              <input type="checkbox" checked={hideBlockedDomains} onChange={toggleBlockedLinks} /> Hide blocked links
-            </label>
             <label className="checkbox-inline">
               <input type="checkbox" checked={hideSameOrigin} onChange={toggleHideSameOrigin} /> Hide same origin
             </label>
@@ -514,6 +507,7 @@ export default function LinkList(props) {
           </div>
         </div>
       </div>
+      {props.toolbarStatus && <div className="LinkMetadataHistoryStatus" role="status">{props.toolbarStatus}</div>}
       <div ref={linkListRef} className="LinkListColumns">
         {renderSection('HTML Links', aTagItems, aTagListRef)}
         {renderSection('Embedded Links', scriptItems, scriptListRef)}
