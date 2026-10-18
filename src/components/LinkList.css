@@ -377,3 +377,12 @@
   color: #ccc;
   font-size: 12px;
 }
+
+.LinkListContractName {
+  color: #ffd479;
+  font-weight: 600;
+}
+.LinkListContractSymbol {
+  color: #a9c7ff;
+  font-weight: 600;
+}

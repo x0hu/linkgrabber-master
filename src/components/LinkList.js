@@ -371,12 +371,11 @@ export default function LinkList(props) {
         const positive = value => typeof value === 'string' && /^0x[0-9a-f]+$/i.test(value) && /[1-9a-f]/i.test(value.slice(2));
         const matches = [...new Map(chainMatches.map(entry => [entry.chainId, entry])).values()]
           .filter(entry => entry.hasCode || positive(entry.balance) || positive(entry.transactionCount));
-        matches.sort((a, b) => CHAINS.findIndex(chain => chain.id === a.chainId) - CHAINS.findIndex(chain => chain.id === b.chainId));
+        matches.sort((a, b) => Number(!!b.hasCode) - Number(!!a.hasCode) || CHAINS.findIndex(chain => chain.id === a.chainId) - CHAINS.findIndex(chain => chain.id === b.chainId));
         const renderChain = entry => {
-          const facts = [entry.hasCode ? 'Contract code found' : '', positive(entry.balance) ? 'Native balance found' : '', !entry.hasCode && positive(entry.transactionCount) ? 'Sent transactions found' : ''].filter(Boolean).join(' · ');
           const name = entry.hasCode ? entry.name || entry.symbol : '';
-          return (<div key={entry.chainId} className="LinkListChainMatch" title={facts}>
-            {CHAINS.find(chain => chain.id === entry.chainId)?.name || entry.chainId}{name ? `: ${name}` : ''}{name && entry.name && entry.symbol ? ` (${entry.symbol})` : ''} <ExplorerLink entry={entry} />
+          return (<div key={entry.chainId} className="LinkListChainMatch">
+            {CHAINS.find(chain => chain.id === entry.chainId)?.name || entry.chainId}{entry.hasCode ? ' *' : ''}{name && <>: <span className={entry.name ? 'LinkListContractName' : 'LinkListContractSymbol'}>{name}</span>{entry.name && entry.symbol && <> <span className="LinkListContractSymbol">({entry.symbol})</span></>}</>} <ExplorerLink entry={entry} />
           </div>);
         };
         const chainMetadata = matches.length ? (<div className="LinkListChainMetadata">

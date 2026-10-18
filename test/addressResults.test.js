@@ -25,9 +25,12 @@ test('renders compact contract locations, wallet balance and activity chains', a
     {address, chainId: 8453, hasCode: true, name: '', symbol: ''},
     {address, chainId: 1, hasCode: false, balance: '0x1', transactionCount: '0x2'},
   ]});
-  assert.match(html, /Contract code found.*Base/);
-  assert.ok(html.includes('Native balance found'));
-  assert.ok(html.includes('Sent transactions found'));
+  assert.ok(html.includes('Base *'));
+  assert.ok(!html.includes('Ethereum *'));
+  assert.ok(html.indexOf('Base *') < html.indexOf('Ethereum'));
+  assert.ok(!html.includes('Contract code found'));
+  assert.ok(!html.includes('Native balance found'));
+  assert.ok(!html.includes('Sent transactions found'));
   assert.ok(!html.includes('name unavailable'));
   assert.ok(!html.includes('TOK'));
   assert.ok(html.includes('Inline script'));
@@ -66,9 +69,9 @@ test('shows available contract names and symbols while grouping unnamed contract
     {address, chainId: 8453, hasCode: true},
     {address, chainId: 42161, hasCode: true, name: '', symbol: ''},
   ]});
-  assert.match(html, /Robinhood:.*&lt;Token&gt;.*\(TOK\)/);
-  assert.match(html, /Ethereum:.*Name only/);
-  assert.match(html, /HyperEVM:.*SYM/);
+  assert.match(html, /Robinhood \*:.*&lt;Token&gt;.*\(TOK\)/);
+  assert.match(html, /Ethereum \*:.*Name only/);
+  assert.match(html, /HyperEVM \*:.*SYM/);
   assert.equal((html.match(/class="LinkListChainMatch"/g) || []).length, 5);
   assert.ok(html.includes('Base'));
   assert.ok(html.includes('Arbitrum'));
