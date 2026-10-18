@@ -1,3 +1,4 @@
+import {normalizeResolverUrl} from '../addressResolver';
 import React, {useState} from 'react';
 import './Options.css';
 
@@ -6,6 +7,7 @@ export default function Options(props) {
     <div className="container-fluid">
       <div className="row">
         <div className="col-sm-6">
+          <ResolverEditor key={props.resolverUrl} url={props.resolverUrl} save={props.setResolverUrl} />
           <h2>Blocked Domains</h2>
 
           <BlockedDomainsEditor
@@ -66,4 +68,24 @@ function BlockedDomainsEditor(props) {
       </div>
     </form>
   );
+}
+
+function ResolverEditor({url = '', save}) {
+  const [value, setValue] = useState(url);
+  const [status, setStatus] = useState('');
+  const submit = async event => {
+    event.preventDefault();
+    const normalized = normalizeResolverUrl(value);
+    if (normalized === null) { setStatus('Enter an HTTPS resolver URL, or HTTP for localhost. Do not include credentials, query parameters or a fragment.'); return; }
+    try { await save(normalized); setStatus('Saved'); }
+    catch (e) { setStatus('Could not save the resolver URL.'); }
+  };
+  return (<form onSubmit={submit}>
+    <h2>Link Grabber resolver</h2>
+    <p>Use your evmoleSIG service for a shared address cache and site history. Saving a URL enables sending address metadata, scanned hostnames and found addresses to that service. Full page URLs and script contents are not sent. Leave blank to use only local storage.</p>
+    <label htmlFor="addressResolverUrl">Resolver URL</label>
+    <input id="addressResolverUrl" className="form-control" type="url" value={value} onChange={event => setValue(event.target.value)} placeholder="https://your-resolver.example" />
+    <button className="btn btn-primary" type="submit">Save resolver</button>
+    <p role="status">{status}</p>
+  </form>);
 }

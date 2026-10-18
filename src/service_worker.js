@@ -41,6 +41,7 @@ function finalizeCollection(tabId, scanId) {
 
   chrome.storage.session.get(DEFAULT_SESSION).then(session => {
     session.tabData[tabId] = {
+      scanId,
       source: collection.sourceUrl,
       links: allLinks,
     };

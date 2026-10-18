@@ -141,7 +141,7 @@ export function persistAddressMetadata(storage, entries) {
   return cacheWrites;
 }
 
-export async function enrichAddresses(addresses, chains, {storage, onResults, signal, fetcher = fetch, budgetMs = LOOKUP_BUDGET_MS, forceRefresh = false}) {
+export async function enrichAddresses(addresses, chains, {storage, onResults, signal, fetcher = fetch, budgetMs = LOOKUP_BUDGET_MS, forceRefresh = false, resolver = null}) {
   const deadline = Date.now() + budgetMs;
   const unique = [...new Set(addresses.filter(address => /^0x[0-9a-f]{40}$/i.test(address) && !isExcludedAddress(address)).map(address => address.toLowerCase()))];
   const selected = unique.slice(0, 100);
@@ -158,23 +158,39 @@ export async function enrichAddresses(addresses, chains, {storage, onResults, si
     }
     for (let i = 0; i < missing.length; i += 10) jobs.push({chain, offset: i, addresses: missing.slice(i, i + 10)});
   }
+  if (resolver && jobs.length && !forceRefresh && !signal?.aborted) {
+    try {
+      const cached = await resolver.lookup([...new Set(jobs.flatMap(job => job.addresses))], chains.map(chain => chain.id));
+      const present = new Set(results.map(entry => `${entry.chainId}:${entry.address}`));
+      for (const entry of cached) {
+        const key = `${entry.chainId}:${entry.address}`;
+        if (!present.has(key)) { results.push(entry); present.add(key); }
+      }
+      for (const job of jobs) job.addresses = job.addresses.filter(address => !present.has(`${job.chain.id}:${address}`));
+      for (let i = jobs.length - 1; i >= 0; i--) if (!jobs[i].addresses.length) jobs.splice(i, 1);
+      try { await persistAddressMetadata(storage, cached); } catch (e) { /* Local cache optional. */ }
+    } catch (e) { /* RPC fallback remains available. */ }
+  }
   jobs.sort((a, b) => a.offset - b.offset);
   onResults(results.slice());
   if (!jobs.length) return {failed: 0, skipped: Math.max(0, unique.length - selected.length)};
   const catalog = await loadRpcCatalog(storage, fetcher, signal);
   const lookup = createRpcClient({fetcher});
   let failed = 0;
+  const remoteWrites = [];
   async function worker() {
     while (jobs.length && !signal?.aborted && Date.now() < deadline) {
       const job = jobs.shift();
       try {
         const entries = await lookup(job.chain.id, job.addresses, catalog[job.chain.id], {signal, deadline});
         results.push(...entries);
+        if (resolver) remoteWrites.push(resolver.store(entries).catch(() => {}));
         if (!signal?.aborted) onResults(results.slice());
         try { await persistAddressMetadata(storage, entries); } catch (e) { /* Keep displaying results if storage is full. */ }
       } catch (e) { failed++; }
     }
   }
   await Promise.all(Array.from({length: 4}, worker));
+  await Promise.all(remoteWrites);
   return {failed: failed + jobs.length, skipped: Math.max(0, unique.length - selected.length)};
 }

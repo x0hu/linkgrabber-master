@@ -144,3 +144,20 @@ test('each completed batch is persisted before the remaining scan finishes', asy
   assert.equal(calls, 5);
   assert.equal(Object.keys(local.data.addressMetadata).length, 50);
 });
+
+test('remote cache misses fall back to RPC, while hits populate local storage', async () => {
+  const entry = {version: 2, address, chainId: 1, hasCode: true, name: 'Remote', symbol: 'R', balance: '0x0', transactionCount: '0x0', checkedAt: Date.now()};
+  const local = storage();
+  let requests = 0;
+  let values;
+  const options = {storage: local, onResults: result => { values = result; }, resolver: {lookup: async () => [entry]}, fetcher: async () => { requests++; throw new Error('unexpected RPC'); }};
+  await enrichAddresses([address], [CHAINS[1]], options);
+  assert.deepEqual(values, [entry]);
+  assert.equal(requests, 0);
+  assert.deepEqual(local.data.addressMetadata['1:' + address], entry);
+  const writes = [];
+  local.data = {rpcCatalog: {at: Date.now(), chains: {1: urls}}};
+  await enrichAddresses([address], [CHAINS[1]], {...options, resolver: {lookup: async () => { throw new Error('offline'); }, store: async entries => writes.push(...entries)}, fetcher: async (url, opts) => response(opts.body)});
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].name, 'Token');
+});

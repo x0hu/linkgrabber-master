@@ -32,6 +32,7 @@ function blockedDomainsSet(blockedDomains) {
     <AddressResults
       blockedDomains={blockedDomainsSet(blockedDomains)}
       expired={false}
+      scanId={data.scanId}
       links={data.links}
       source={data.source} />
   );

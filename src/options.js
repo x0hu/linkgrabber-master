@@ -19,6 +19,8 @@ const root = createRoot(document.getElementById('Options'));
 function render(storage) {
   root.render(
     <Options
+      resolverUrl={storage.addressResolverUrl || ''}
+      setResolverUrl={url => chrome.storage.sync.set({addressResolverUrl: url})}
       blockedDomains={storage.blockedDomains}
       setBlockedDomains={setBlockedDomains} />
   );
@@ -27,6 +29,7 @@ function render(storage) {
 let stored = {};
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'sync') return;
   for (let key in changes) {
     stored[key] = changes[key].newValue;
   }

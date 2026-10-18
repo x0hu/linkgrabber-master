@@ -64,4 +64,20 @@ Chain checks support BNB, Ethereum, Base, Monad, Avalanche, Arbitrum, HyperEVM, 
 
 Lookups use public HTTPS endpoints from Chainlist with a bundled fallback catalog. JSON-RPC batches validate the returned chain ID and try up to three endpoints, with 2.5 seconds per attempt, four concurrent batches, and a 15-second overall RPC budget. Up to 100 unique addresses are checked per scan. Addresses are sent to RPC providers; page URLs are not included in those requests. Provider failures remain unknown, rather than being cached as absent contracts.
 
-Successful batches are saved to `chrome.storage.local` as they complete. The cache is shared across sites, expires for reuse after five minutes, and retains at most 5,000 chain/address entries. Reloading the extension preserves this storage. “Refresh chain checks” bypasses cached address results. Web Locks serialize cache updates across results tabs. The Chainlist catalog refreshes daily. There is no remote database or shared sighting history.
+Successful batches are saved to `chrome.storage.local` as they complete. The cache is shared across sites, expires for reuse after five minutes, and retains at most 5,000 chain/address entries. Reloading the extension preserves this storage. “Refresh chain checks” bypasses cached address results. Web Locks serialize cache updates across results tabs. The Chainlist catalog refreshes daily. An optional evmoleSIG resolver adds a shared cache and site sighting history.
+
+
+## Optional evmoleSIG resolver
+
+Open **Resolver settings** from the results page and save the base URL of the updated evmoleSIG service. HTTPS is required for remote services; localhost also supports HTTP. Leave the setting blank to retain local-only behavior. The service must include the `/linkgrabber/health`, `/linkgrabber/lookup`, `/linkgrabber/metadata`, and `/linkgrabber/scans` routes.
+
+Metadata lookup order is fresh local cache, fresh remote cache, then RPCs. Refresh bypasses both caches. RPC results are uploaded in batches. Resolver failures do not prevent RPC lookups or local results. All metadata lookups remain limited to the configured chains and first 100 unique addresses.
+
+Saving a resolver URL enables sending found addresses, chain metadata and the source hostname to that service. Page paths, query strings, and script contents are not uploaded. Each extraction gets a stable UUID stored with its results. Reopening results or refreshing metadata reuses the UUID and does not increment site counts; scanning a page again creates a new UUID. Each address is counted once per scan regardless of duplicate HTML or script occurrences. New addresses are marked “New on this site”; this does not imply recent deployment. Older result pages without a scan ID are not posted to history. Site histories accept up to 10,000 addresses per scan and report an error rather than silently truncating larger scans.
+
+The resolver uses the same PostgreSQL database as the signature service, with separate Link Grabber tables. Deploy/restart the updated service to initialize them before entering its URL. The resolver retains its existing private/trusted deployment model.
+
+
+Site counts group all paths and subdomains under the registrable domain, such as `example.com` or `example.co.uk`. The backend performs normalization with the Public Suffix List and migrates existing hostname records on startup. All subdomains count together, including hosted tenants: `alice.github.io` and `bob.github.io` count as `github.io`. HTTP/HTTPS, ports and paths do not affect site identity. Install the backend dependency update with `npm ci` and restart the updated resolver before using these domain-level counts. Reopening results returns the current counts without creating another scan.
+
+Address badges show the distinct-domain count only when it exceeds one. Within each EVM source section, addresses with a contract name or symbol come first, then addresses sort by ascending distinct-domain count. Unknown counts follow known counts within each group. This applies to both raw addresses and address hyperlinks.

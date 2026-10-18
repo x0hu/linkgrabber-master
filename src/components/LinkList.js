@@ -1,3 +1,4 @@
+import {getAddressExplorerUrl} from '../chainExplorers';
 import {isExcludedAddressLink} from '../excludedAddresses';
 import React from 'react';
 import {useEffect, useMemo, useRef, useState} from 'react';
@@ -19,7 +20,7 @@ function copyLinks(element) {
   const selection = window.getSelection();
   const prevRange = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
   const tmp = document.createElement('div');
-  const items = element.querySelectorAll('a, [data-copy-value]');
+  const items = element.querySelectorAll('a:not([data-copy-exclude]), [data-copy-value]');
   for (let i = 0; i < items.length; i++) {
     const copyValue = items[i].dataset.copyValue;
     if (copyValue) {
@@ -225,6 +226,16 @@ function isInstagramLink(hostname) {
   return hostname.toLowerCase().includes('instagram.com');
 }
 
+function ExplorerLink({entry}) {
+  const href = getAddressExplorerUrl(entry.chainId, entry.address);
+  const chainName = CHAINS.find(chain => chain.id === entry.chainId)?.name || entry.chainId;
+  if (!href) return null;
+  return (<a className="LinkListExplorerButton" href={href} target="_blank" rel="noopener noreferrer"
+    data-copy-exclude="true" aria-label={`Open ${entry.address} on ${chainName} explorer`}>
+    Explorer ↗
+  </a>);
+}
+
 export default function LinkList(props) {
   const linkListRef = useRef(null);
   const aTagListRef = useRef(null);
@@ -353,22 +364,26 @@ export default function LinkList(props) {
         const sourceLabel = link.evmSourceKind === 'page' ? 'Page HTML' :
           link.evmSourceKind === 'inline' ? 'Inline script' :
           link.evmPackage ? `Package path: ${link.evmPackage}` : 'Script, package unknown';
+        const observation = (props.observations || []).find(item => item.address === (link.evmAddress || link.address || getPathTail(link.href)).toLowerCase());
+        const siteCount = Number.isSafeInteger(observation?.siteCount) && observation.siteCount > 1 ? (
+          <span className="LinkListSiteCount" title={`Seen on ${observation.siteCount} distinct site${observation.siteCount === 1 ? '' : 's'}; subdomains count together`} aria-label={`Seen on ${observation.siteCount} distinct sites`}> ({observation.siteCount})</span>
+        ) : null;
+        const siteHistory = observation ? <small className="LinkListAddressSource">{observation.isNew ? 'New on this site · ' : ''}Seen in {observation.seenCount} scan{observation.seenCount === 1 ? '' : 's'} on {observation.siteDomain || 'this site'}</small> : null;
         const chainMatches = (props.metadata || []).filter(entry => entry.address === (link.evmAddress || link.address || getPathTail(link.href)).toLowerCase());
         const positive = value => typeof value === 'string' && /^0x[0-9a-f]+$/i.test(value) && /[1-9a-f]/i.test(value.slice(2));
-        const namedContracts = chainMatches.filter(entry => entry.hasCode && (entry.name || entry.symbol))
-          .sort((a, b) => CHAINS.findIndex(chain => chain.id === a.chainId) - CHAINS.findIndex(chain => chain.id === b.chainId));
-        const locations = [
-          ['Contract on', chainMatches.filter(entry => entry.hasCode && !entry.name && !entry.symbol)],
-          ['Native balance on', chainMatches.filter(entry => positive(entry.balance))],
-          ['Sent transactions on', chainMatches.filter(entry => !entry.hasCode && positive(entry.transactionCount))],
-        ].filter(([, entries]) => entries.length);
-        const chainMetadata = locations.length || namedContracts.length ? (<div className="LinkListChainMetadata">
-          {namedContracts.map(entry => (<div key={entry.chainId}>
-            {CHAINS.find(chain => chain.id === entry.chainId)?.name || entry.chainId}: {entry.name || entry.symbol}{entry.name && entry.symbol ? ` (${entry.symbol})` : ''}
-          </div>))}
-          {locations.map(([label, entries]) => (<div key={label}>
-          {label}: {entries.sort((a, b) => CHAINS.findIndex(chain => chain.id === a.chainId) - CHAINS.findIndex(chain => chain.id === b.chainId)).map(entry => CHAINS.find(chain => chain.id === entry.chainId)?.name || entry.chainId).join(', ')}
-        </div>))}</div>) : null;
+        const matches = [...new Map(chainMatches.map(entry => [entry.chainId, entry])).values()]
+          .filter(entry => entry.hasCode || positive(entry.balance) || positive(entry.transactionCount));
+        matches.sort((a, b) => CHAINS.findIndex(chain => chain.id === a.chainId) - CHAINS.findIndex(chain => chain.id === b.chainId));
+        const renderChain = entry => {
+          const facts = [entry.hasCode ? 'Contract code found' : '', positive(entry.balance) ? 'Native balance found' : '', !entry.hasCode && positive(entry.transactionCount) ? 'Sent transactions found' : ''].filter(Boolean).join(' · ');
+          const name = entry.hasCode ? entry.name || entry.symbol : '';
+          return (<div key={entry.chainId} className="LinkListChainMatch" title={facts}>
+            {CHAINS.find(chain => chain.id === entry.chainId)?.name || entry.chainId}{name ? `: ${name}` : ''}{name && entry.name && entry.symbol ? ` (${entry.symbol})` : ''} <ExplorerLink entry={entry} />
+          </div>);
+        };
+        const chainMetadata = matches.length ? (<div className="LinkListChainMetadata">
+          {matches.map(renderChain)}
+        </div>) : null;
         const occurrences = link.evmOccurrences || [{url: link.evmSourceUrl, context: ''}];
         const provenance = occurrences.filter(item => item.url).map((item, index) => (
           <small key={index} className="LinkListAddressSource">{item.kind === 'inline' ? 'Inline script' : item.kind === 'page' ? 'Page HTML' : item.kind === 'package' ? `Package path: ${item.package}` : item.kind === 'script' ? 'Script, package unknown' : sourceLabel}: {item.url}{index > 0 && item.context ? ` (${item.context})` : ''}</small>
@@ -390,20 +405,32 @@ export default function LinkList(props) {
                 <span className="LinkListCopyAddress">{address}</span>
                 <span className="LinkListCopyStatus" aria-hidden="true">✓</span>
               </button>
+              {siteCount}
+              {siteHistory}
               {chainMetadata}
               {provenance}
             </li>
           );
-          evmGroups[addressSourceGroup(link)].push(item);
+          evmGroups[addressSourceGroup(link)].push({
+            item,
+            named: matches.some(entry => entry.hasCode && (entry.name || entry.symbol)),
+            count: Number.isSafeInteger(observation?.siteCount) && observation.siteCount > 0 ? observation.siteCount : Infinity,
+          });
         } else {
           const item = (
             <li key={index} className={itemClassName}>
               <a href={link.href} target="_blank">{link.href}</a>
+              {siteCount}
+              {siteHistory}
               {chainMetadata}
               {provenance}
             </li>
           );
-          evmGroups[addressSourceGroup(link)].push(item);
+          evmGroups[addressSourceGroup(link)].push({
+            item,
+            named: matches.some(entry => entry.hasCode && (entry.name || entry.symbol)),
+            count: Number.isSafeInteger(observation?.siteCount) && observation.siteCount > 0 ? observation.siteCount : Infinity,
+          });
         }
       } else if (isImage) {
         const item = (
@@ -429,15 +456,20 @@ export default function LinkList(props) {
       }
     });
 
+    // Keep source sections intact. Unknown counts follow known counts;
+    // stable sorting preserves the existing order for ties.
+    const sortAddresses = items => items.sort((a, b) =>
+      Number(b.named) - Number(a.named) || (a.count === b.count ? 0 : a.count - b.count)
+    ).map(entry => entry.item);
     return {
       aTagItems: aTag,
       scriptItems: script,
-      evmItems: evmFromHtml,
-      evmScriptItems: evmFromEmbedded,
-      evmPackageItems: evmFromPackages,
+      evmItems: sortAddresses(evmFromHtml),
+      evmScriptItems: sortAddresses(evmFromEmbedded),
+      evmPackageItems: sortAddresses(evmFromPackages),
       imageItems: image,
     };
-  }, [processedLinks, blocked, duplicates, filter, hideDuplicates, hideBlockedDomains, copiedAddress, props.metadata]);
+  }, [processedLinks, blocked, duplicates, filter, hideDuplicates, hideBlockedDomains, copiedAddress, props.metadata, props.observations]);
 
   const renderSection = (title, items, ref) => {
     if (items.length === 0) {
